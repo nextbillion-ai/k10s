@@ -21,6 +21,7 @@ jobs:
           set -e
           git config --global user.email "chang@nextbillion.ai"
           git config --global user.name "chang"
+          git config --global --add safe.directory /__w/k10s/k10s
           cat $NPMRC > ~/.npmrc
           yarn
           yarn publish --new-version ${GITHUB_REF#refs/tags/}
