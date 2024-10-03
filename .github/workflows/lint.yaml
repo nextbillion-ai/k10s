@@ -1,0 +1,20 @@
+name: Lint
+
+on:
+  push:
+
+jobs:
+  lint:
+    runs-on: self-hosted
+    container:
+      image: node:18-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: lint
+        run: |
+          #!/bin/bash
+          set -e
+          rm yarn.lock
+          yarn --dev install
+          yarn lint
+          yarn ut
