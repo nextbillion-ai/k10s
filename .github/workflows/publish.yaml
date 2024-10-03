@@ -1,4 +1,4 @@
-name: Docker
+name: publish
 
 on:
   push:
@@ -8,7 +8,6 @@ on:
 jobs:
   publish:
     runs-on: self-hosted
-    needs: lint
     container:
       image: timbru31/node-alpine-git:14
       options: --rm -v /opt/secrets:/opt/secrets

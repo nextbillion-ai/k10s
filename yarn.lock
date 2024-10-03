@@ -431,11 +431,6 @@ chalk@^4.0.0, chalk@^4.1.0:
     ansi-styles "^4.1.0"
     supports-color "^7.1.0"
 
-chalk@^5.3.0:
-  version "5.3.0"
-  resolved "https://registry.yarnpkg.com/chalk/-/chalk-5.3.0.tgz#67c20a7ebef70e7f3970a01f90fa210cb6860385"
-  integrity sha512-dLitG79d+GV1Nb/VYcCDFivJeK1hiukt9QjRNVOsUtTy1rR1YJsmpGGTZ3qJos+uw7WmWF4wUwBd9jxjocFC2w==
-
 chokidar@^3.5.3:
   version "3.6.0"
   resolved "https://registry.yarnpkg.com/chokidar/-/chokidar-3.6.0.tgz#197c6cc669ef2a8dc5e7b4d97ee4e092c3eb0d5b"
@@ -1019,11 +1014,6 @@ fastq@^1.6.0:
   integrity sha512-sRVD3lWVIXWg6By68ZN7vho9a1pQcN/WBFaAAsDDFzlJjvoGx0P8z7V1t72grFJfJhu3YPZBuu25f7Kaw2jN1w==
   dependencies:
     reusify "^1.0.4"
-
-figlet@^1.5.2:
-  version "1.7.0"
-  resolved "https://registry.yarnpkg.com/figlet/-/figlet-1.7.0.tgz#46903a04603fd19c3e380358418bb2703587a72e"
-  integrity sha512-gO8l3wvqo0V7wEFLXPbkX83b7MVjRrk1oRLfYlZXol8nEpb/ON9pcKLI4qpBv5YtOTfrINtqb7b40iYY2FTWFg==
 
 file-entry-cache@^6.0.1:
   version "6.0.1"
@@ -1720,11 +1710,6 @@ keyv@^4.5.3:
   dependencies:
     json-buffer "3.0.1"
 
-kleur@^3.0.3:
-  version "3.0.3"
-  resolved "https://registry.yarnpkg.com/kleur/-/kleur-3.0.3.tgz#a79c9ecc86ee1ce3fa6206d1216c501f147fc07e"
-  integrity sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==
-
 levn@^0.4.1:
   version "0.4.1"
   resolved "https://registry.yarnpkg.com/levn/-/levn-0.4.1.tgz#ae4562c007473b932a6200d403268dd2fffc6ade"
@@ -2096,14 +2081,6 @@ pretty-data@^0.40.0:
   resolved "https://registry.yarnpkg.com/pretty-data/-/pretty-data-0.40.0.tgz#572aa8ea23467467ab94b6b5266a6fd9c8fddd72"
   integrity sha512-YFLnEdDEDnkt/GEhet5CYZHCvALw6+Elyb/tp8kQG03ZSIuzeaDWpZYndCXwgqu4NAjh1PI534dhDS1mHarRnQ==
 
-prompts@^2.4.2:
-  version "2.4.2"
-  resolved "https://registry.yarnpkg.com/prompts/-/prompts-2.4.2.tgz#7b57e73b3a48029ad10ebd44f74b01722a4cb069"
-  integrity sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q==
-  dependencies:
-    kleur "^3.0.3"
-    sisteransi "^1.0.5"
-
 prop-types@^15.8.1:
   version "15.8.1"
   resolved "https://registry.yarnpkg.com/prop-types/-/prop-types-15.8.1.tgz#67d87bf1a694f48435cf332c24af10214a3140b5"
@@ -2375,11 +2352,6 @@ sinon@^17.0.1:
     diff "^5.2.0"
     nise "^5.1.9"
     supports-color "^7"
-
-sisteransi@^1.0.5:
-  version "1.0.5"
-  resolved "https://registry.yarnpkg.com/sisteransi/-/sisteransi-1.0.5.tgz#134d681297756437cc05ca01370d3a7a571075ed"
-  integrity sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==
 
 sshpk@^1.7.0:
   version "1.18.0"
