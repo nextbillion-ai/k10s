@@ -12,7 +12,7 @@ export async function Config () {
     debug: shell.debug,
     warn: shell.warn,
     error: shell.error,
-    fatal: shell.fatal,
+    fatal: shell.fatal
   }
   return options
 }

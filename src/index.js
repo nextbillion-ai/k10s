@@ -12,5 +12,5 @@ export {
   OperatorResource,
   OperatorAsset,
   OperatorCtx,
-  OperatorUtil,
+  OperatorUtil
 }
