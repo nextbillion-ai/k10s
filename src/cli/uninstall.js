@@ -7,7 +7,7 @@ export const Uninstall = {
   command: 'uninstall <resource> [options]',
   desc: 'uninstall a resource: namespace/name ',
   handler: async (argv) => {
-    shell.wrap(async () => {
+    await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
       const context = new Context(argv.resource, await Config())
       await context.run(async (context) => {

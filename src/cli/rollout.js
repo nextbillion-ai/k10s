@@ -17,7 +17,7 @@ export const Rollout = {
     })
   },
   handler: async (argv) => {
-    shell.wrap(async () => {
+    await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
       if (!argv.file) {
         shell.throwError('missing resource definition')

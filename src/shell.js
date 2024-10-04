@@ -115,7 +115,7 @@ async function wrap (closure) {
   process.on('SIGINT', async () => { doFinalize(1) })
   process.on('SIGTERM', async () => { doFinalize(1) })
   process.on('beforeExit', async () => {
-    await finalize(0)
+    await doFinalize(0)
   })
   try {
     await closure()
