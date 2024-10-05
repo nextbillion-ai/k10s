@@ -19,16 +19,18 @@ export const Rollout = {
   handler: async (argv) => {
     await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
-      if (!argv.file) {
-        shell.throwError('missing resource definition')
-      }
-      if (!await fs.pathExists(argv.file, { mode: 'file' })) {
-        shell.throwError(`${argv.file} is not a valid path`)
-      }
       const context = new Context(argv.resource, await Config())
       await context.run(async (context) => {
         try {
-          const templatedValue = await fs.yamlLoad(argv.file)
+          let templatedValue
+          if (argv.file) {
+            if (!await fs.pathExists(argv.file, { mode: 'file' })) {
+              shell.throwError(`${argv.file} is not a valid path`)
+            }
+            templatedValue = await fs.yamlLoad(argv.file)
+          } else {
+            templatedValue = await context.resource().get(context)
+          }
           if (!templatedValue.app) {
             throw new Error('resource payload invalid: key app not found')
           }
@@ -54,6 +56,7 @@ export const Rollout = {
           }
           await context.resource().schemaCheck(context, templatedValue)
           await context.resource().update(context, templatedValue)
+          await context.ensureNamespace()
           context.wait = argv.wait
           await Operation.rollout(context)
         } catch (e) {
