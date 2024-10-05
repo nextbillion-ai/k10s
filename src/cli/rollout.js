@@ -14,12 +14,15 @@ export const Rollout = {
     }).option('set', {
       type: 'array',
       alias: 's'
+    }).option('config', {
+      type: 'string',
+      alias: 'c'
     })
   },
   handler: async (argv) => {
     await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
-      const context = new Context(argv.resource, await Config())
+      const context = new Context(argv.resource, await Config(argv.Config))
       await context.run(async (context) => {
         try {
           let templatedValue
