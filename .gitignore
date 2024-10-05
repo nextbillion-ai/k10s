@@ -1,3 +1,4 @@
 defs
 node_modules
 coverage
+.operator

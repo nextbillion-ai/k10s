@@ -58,7 +58,7 @@ function log (type, msg, options) {
     return
   }
   const level = logLevelMap[type] || 3
-  if (level >= logLevel) {
+  if (level <= logLevel) {
     console.log(`${chalk.grey(`[${type}:]`)} ${msg}`)
   }
 }
