@@ -28,7 +28,7 @@ export class Context {
     this.tempFiles = []
     this.cluster = options.cluster
     this.basePath = options.basePath
-    this.namespaceVersion = options.namespaceVersion
+    this.namespaceVersion = options.namespaceVersion || options.namespaceVesion
     this.globalSpecPlugins = options.globalSpecPlugins
     this.workingDir = options.workingDir
     this.logging = options.logging
