@@ -4,7 +4,7 @@ import os from 'os'
 export async function Config (cPath) {
   let configPath = cPath || process.env.K10S_CONFIG
   if (!configPath) {
-    configPath = '~/.foreman.yaml'
+    configPath = '~/.k10s.yaml'
   }
   configPath = configPath.replace(/^~\//, os.homedir() + '/')
   const workingDir = `${os.homedir()}/.k10s`
