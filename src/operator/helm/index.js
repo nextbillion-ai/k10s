@@ -12,7 +12,7 @@ export const Helm = {
     let r = await shell.run(`kubectl get ns/${context.namespace}`, { silent: true, nothrow: true })
     if (r.code !== 0) {
       Common.info(context, `creating namespace: ${context.namespace}`)
-      await shell.run(`bash -c "set -e;gsg cp ${Config.operatorBasePath}/assets/namespace/releases/${Config.namespaceVersion}/chart.tgz ./${context.namespace}.tgz; 
+      await shell.run(`bash -c "set -e;gsg cp ${Config.basePath}/assets/namespace/releases/${Config.namespaceVersion}/chart.tgz ./${context.namespace}.tgz; 
       helm install ${context.namespace} ./${context.namespace}.tgz --set global.namespace=${context.namespace} --wait --timeout 20s;rm ${context.namespace}.tgz;"`)
     }
 
