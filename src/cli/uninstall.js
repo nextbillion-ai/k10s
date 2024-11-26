@@ -15,7 +15,7 @@ export const Uninstall = {
   handler: async (argv) => {
     await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
-      const context = new Context(argv.resource, await Config(argv.Config))
+      const context = new Context(argv.resource, await Config(argv.config))
       await context.run(async (context) => {
         try {
           context.wait = argv.wait
