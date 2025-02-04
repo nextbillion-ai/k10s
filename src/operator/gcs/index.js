@@ -11,6 +11,10 @@ export const GCS = {
     await shell.run(`gsg cp -r ${from} ${to}`, options)
   },
 
+  async rsync (from, to, options) {
+    await shell.run(`gsg -m rsync -r ${from} ${to}`, options)
+  },
+
   async write (path, value) {
     const filename = `${Date.now()}`
     if (typeof (value) === 'string') {

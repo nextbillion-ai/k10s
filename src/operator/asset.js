@@ -55,7 +55,7 @@ export class Asset {
       }
     }
     if (!(await fs.pathExists(`${this.basePath}/chart.tgz`))) {
-      await GCS.cp(`${assetUrl}`, this.basePath)
+      await GCS.rsync(`${assetUrl}`, this.basePath)
     }
     await GCS.unlock(assetLockUrl, { nothrow: true })
     if (!(await fs.pathExists(`${this.basePath}/chart.tgz`))) {
