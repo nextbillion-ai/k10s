@@ -18,6 +18,12 @@ export const Rollout = {
       type: 'string',
       alias: 'c'
     })
+    .option('update-namespace', {
+      alias: 'n',
+      type: 'boolean',
+      describe: 'Update the namespace if needed',
+      default: false // or true, depending on your needs
+    })
   },
   handler: async (argv) => {
     await shell.wrap(async () => {
@@ -59,7 +65,7 @@ export const Rollout = {
           }
           await context.resource().schemaCheck(context, templatedValue)
           await context.resource().update(context, templatedValue)
-          await context.ensureNamespace()
+          await context.ensureNamespace(argv.updateNamespace)
           context.wait = argv.wait
           await Operation.rollout(context)
         } catch (e) {

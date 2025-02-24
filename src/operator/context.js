@@ -44,12 +44,19 @@ export class Context {
     _contexts[this.id] = this
   }
 
-  async ensureNamespace () {
+  async ensureNamespace (updateNamespace) {
     const r = await shell.run(`kubectl get ns/${this.namespace}`, { silent: true, nothrow: true })
     if (r.code !== 0) {
       this.info(`creating namespace: ${this.namespace}`)
       await shell.run(`bash -c "set -e;gsg cp ${this.basePath}/assets/namespace/releases/${this.namespaceVersion}/chart.tgz ./${this.namespace}.tgz;gsg cp ${this.basePath}/assets/global/${this.cluster}.yaml ./${this.cluster}.yaml; 
       helm install ${this.namespace} ./${this.namespace}.tgz -f ./${this.cluster}.yaml --set global.namespace=${this.namespace} --wait --timeout 20s;rm ${this.namespace}.tgz;rm ./${this.cluster}.yaml"`)
+      return
+    }
+
+    if (updateNamespace) {
+      this.info(`updating namespace: ${this.namespace}`)
+      await shell.run(`bash -c "set -e;gsg cp ${this.basePath}/assets/namespace/releases/${this.namespaceVersion}/chart.tgz ./${this.namespace}.tgz;gsg cp ${this.basePath}/assets/global/${this.cluster}.yaml ./${this.cluster}.yaml; 
+      helm upgrade ${this.namespace} ./${this.namespace}.tgz -f ./${this.cluster}.yaml --set global.namespace=${this.namespace} --wait --timeout 20s;rm ${this.namespace}.tgz;rm ./${this.cluster}.yaml"`)
     }
   }
 
