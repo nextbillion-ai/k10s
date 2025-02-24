@@ -18,12 +18,12 @@ export const Rollout = {
       type: 'string',
       alias: 'c'
     })
-    .option('update-namespace', {
-      alias: 'n',
-      type: 'boolean',
-      describe: 'Update the namespace if needed',
-      default: false // or true, depending on your needs
-    })
+      .option('update-namespace', {
+        alias: 'n',
+        type: 'boolean',
+        describe: 'Update the namespace if needed',
+        default: false // or true, depending on your needs
+      })
   },
   handler: async (argv) => {
     await shell.wrap(async () => {
