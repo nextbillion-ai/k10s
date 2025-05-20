@@ -76,7 +76,7 @@ export class Context {
             this.wait = undefined
             return
           }
-          this.wait = Date.now() + 10 * 60 * 1000
+          this.wait = Date.now() + 40 * 60 * 1000
           break
         case 'number':
           if (this.wait <= 0) {

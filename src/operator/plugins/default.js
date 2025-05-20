@@ -54,6 +54,9 @@ export class Default {
     if (!context.rotated) {
       context.info('setting wait=false since there is no rotation performed')
       context.wait = false
+    } else {
+      context.wait = true
+      context.setTimeout()
     }
     await this.applyManifest(context, newManifest, changes)
     for (const toRemove of toRemoves) {
