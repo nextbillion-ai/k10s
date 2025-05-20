@@ -45,7 +45,7 @@ export class Context {
     _contexts[this.id] = this
   }
 
-  getClusterConfPath() {
+  getClusterConfPath () {
     if (this.clusterConfPath) {
       return this.clusterConfPath
     }
