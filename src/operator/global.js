@@ -8,7 +8,7 @@ export const Global = {
       globalSpec = (yaml.load(await GCS.cat(`gs://nb-data/infra/asgard/clusters/${context.cluster}.yaml`))).global
       context.info(`loaded global spec for ${context.cluster} from asgard`)
     } catch (e) {
-      globalSpec = (yaml.load(await GCS.cat(`${context.basePath}/assets/global/${context.cluster}.yaml`))).global
+      globalSpec = (yaml.load(await GCS.cat(context.getClusterConfPath()))).global
     }
     globalSpec.namespace = context.namespace
     globalSpec.cluster = context.cluster
