@@ -132,8 +132,10 @@ export class Default {
           }
         }
 
+        console.log(`current: ${JSON.stringify(current)}`)
         // we still put the old items in the 'toRemoves' list because we want to keep them temporarily in the genOnly mode
         const removes = (removeAll ? current.items : current.items.slice(0, -1))
+        console.log(`removes: ${JSON.stringify(removes)}`)
         for (const remove of removes) {
           toRemoves.push({ kind: o.kind, name: remove.metadata.name, item: remove })
         }
