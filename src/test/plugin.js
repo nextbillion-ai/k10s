@@ -15,7 +15,7 @@ describe('Plugin', () => {
               diff () { return { spec: { wocao: true } } },
               writeRelease (ctx, release) {},
               rolloutResource (ctx, item) {},
-              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [] } }
+              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [], items: [] } }
             }
           }
           const ctx = {
@@ -76,7 +76,7 @@ describe('Plugin', () => {
               diff () { return { spec: { wocao: true } } },
               writeRelease (ctx, release) {},
               rolloutResource (ctx, item) {},
-              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [] } }
+              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [], items: [] } }
             }
           }
           const ctx = {
@@ -133,7 +133,7 @@ describe('Plugin', () => {
           const lib = {
             K8s: {
               diff () { return { spec: { wocao: true } } },
-              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [] } }
+              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [], items: [] } }
             }
           }
           const ctx = {
@@ -197,7 +197,7 @@ describe('Plugin', () => {
           const lib = {
             K8s: {
               diff () { return { spec: { wocao: true } } },
-              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [] } }
+              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [], items: [] } }
             }
           }
           const ctx = {
@@ -267,7 +267,7 @@ describe('Plugin', () => {
           const lib = {
             K8s: {
               diff () { return { spec: { replicas: true } } },
-              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: true, names: [] } }
+              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: true, names: [], items: [] } }
             }
           }
           const ctx = {
