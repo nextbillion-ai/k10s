@@ -190,9 +190,9 @@ export const K8s = {
       // sort the raw manifest by name to make sure the rotation is in the correct order
       //   so that the last item is the current rotation
       items = rawManifest
-      .filter(item => item.kind === 'StatefulSet' && item.metadata.name.startsWith(`${name}---`))
-      .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
-      names = items.map( item => item.metadata.name)      
+        .filter(item => item.kind === 'StatefulSet' && item.metadata.name.startsWith(`${name}---`))
+        .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
+      names = items.map(item => item.metadata.name)
     } else {
       // get the names from the k8s
       names = (await shell.run(`kubectl get sts -n ${context.namespace} | grep -v NAME | grep -v 'No resources found' | grep "^${name}---"| awk '{print $1}'`,
@@ -201,12 +201,11 @@ export const K8s = {
         .trim()
         .split('\n')
         .filter(x => x.length > 0)
-        .sort()      
-      
-      // creating a shell object for each item for completeness of api contract
-        items = names.map(name => ({ kind: 'StatefulSet', metadata: { name, namespace: context.namespace } }))
-    }
+        .sort()
 
+      // creating a shell object for each item for completeness of api contract
+      items = names.map(name => ({ kind: 'StatefulSet', metadata: { name, namespace: context.namespace } }))
+    }
 
     let rotation = 0
     let exists = false
@@ -225,7 +224,7 @@ export const K8s = {
     }
   },
 
-  async writeRelease (context, release, newRawManifes=[], toRemoves=[]) {
+  async writeRelease (context, release, newRawManifes = [], toRemoves = []) {
     if (context.genOnly) {
       const manifestPath = context.getManifestOutputPathNamespace()
       const manifestFile = context.getManifestOutputPathApp()
@@ -236,7 +235,7 @@ export const K8s = {
       // using newRawManifes insteaad of release because rawManifest carries rotation info
       // we are also adding the toRemoves to the manifest, so that old items are not deleted to guarantee availabiliy
       // but if pruneRotation is true, we will not include those items into the manifest
-      await fs.yamlWriteAll(manifestFile, context.pruneRotation ? newRawManifes : newRawManifes.concat(toRemoves) )
+      await fs.yamlWriteAll(manifestFile, context.pruneRotation ? newRawManifes : newRawManifes.concat(toRemoves))
     } else {
       const name = `${context.name}-manifest`
       await K8s.writeConfigMap(context, name, { manifest: await fs.yamlDumpsAll(release) })
@@ -250,7 +249,8 @@ export const K8s = {
       if (x.kind === 'StatefulSet') {
         const match = x.metadata.name.match(/^(.+)---(\d+)$/)
         if (match) {
-          const [_, baseName, version] = match
+          const baseName = match[1]
+          const version = match[2]
           if (!groups[baseName] || Number(version) > Number(groups[baseName].version)) {
             const item = JSON.parse(JSON.stringify(x)) // Deep clone
             item.metadata.name = baseName // Remove rotation info from name
@@ -271,10 +271,10 @@ export const K8s = {
     return Object.values(groups).map(g => g.item)
   },
 
-  async getRawManifestOutput  (context, options={}) {
+  async getRawManifestOutput  (context, options = {}) {
     const localPath = context.getManifestOutputPathApp()
     try {
-      let oldManifest = await fs.yamlLoadsAll(await fs.readFile(localPath, 'utf8'))
+      const oldManifest = await fs.yamlLoadsAll(await fs.readFile(localPath, 'utf8'))
       return oldManifest
     } catch (e) {
       if (options.nothrow) {
@@ -285,7 +285,7 @@ export const K8s = {
     }
   },
 
-  async getRelease (context, options={}) {
+  async getRelease (context, options = {}) {
     if (context.genOnly) {
       const oldManifest = await K8s.getRawManifestOutput(context, options)
       // need to remove rotation info from the raw manifest
@@ -304,7 +304,7 @@ export const K8s = {
         throw e
       }
     }
-    return oldManifest    
+    return oldManifest
   },
 
   async deleteRelease (context) {

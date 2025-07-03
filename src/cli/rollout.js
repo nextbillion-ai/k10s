@@ -18,24 +18,24 @@ export const Rollout = {
       type: 'string',
       alias: 'c'
     })
-    .option('update-namespace', {
-      alias: 'n',
-      type: 'boolean',
-      describe: 'Update the namespace if needed',
-      default: false // or true, depending on your needs
-    })
-    .option('gen-only', {
-      alias: 'g',
-      type: 'boolean',
-      describe: 'Generate manifest only',
-      default: false
-    })
-    .option('prune-rotation', {
-      alias: 'p',
-      type: 'boolean',
-      describe: 'Prune old rotation info from the manifest',
-      default: false
-    })
+      .option('update-namespace', {
+        alias: 'n',
+        type: 'boolean',
+        describe: 'Update the namespace if needed',
+        default: false // or true, depending on your needs
+      })
+      .option('gen-only', {
+        alias: 'g',
+        type: 'boolean',
+        describe: 'Generate manifest only',
+        default: false
+      })
+      .option('prune-rotation', {
+        alias: 'p',
+        type: 'boolean',
+        describe: 'Prune old rotation info from the manifest',
+        default: false
+      })
   },
   handler: async (argv) => {
     await shell.wrap(async () => {
@@ -49,7 +49,7 @@ export const Rollout = {
         }
         context.genOnly = true
         context.pruneRotation = argv.pruneRotation
-        context.info(`Runing in --gen-only mode, writing manifest to ${context.manifestOutputPath}`)      
+        context.info(`Runing in --gen-only mode, writing manifest to ${context.manifestOutputPath}`)
       }
 
       await context.run(async (context) => {

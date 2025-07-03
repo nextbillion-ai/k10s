@@ -70,7 +70,7 @@ export class Context {
 
   async ensureNamespace (argv) {
     if (this.genOnly) {
-      this.info(`Runing in --gen-only mode, skipping namespace creation`)
+      this.info('Runing in --gen-only mode, skipping namespace creation')
       // no need to care about namespace, just return because we are just generating manifest
       return
     }

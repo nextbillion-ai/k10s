@@ -1,6 +1,5 @@
 import { Common } from '../common.js'
 import { Context } from '../context.js'
-import * as fs from '../../fs.js'
 const blackLists = [/^(docker.io\/)*redis/, /^(docker.io\/)*postgres/]
 export class Default {
   constructor (lib) {
@@ -29,7 +28,7 @@ export class Default {
     }
   }
 
-/**
+  /**
  *
  * @param {Context} context
  * @param {*} chart
@@ -89,7 +88,7 @@ export class Default {
         if (o.kind === 'StatefulSet') {
           // check if we should add rotation in order to properly delete the old item
           const shouldRename = await this.shouldRename(o)
-          if (shouldRename) {toRemoves
+          if (shouldRename) {
             const current = await this.lib.K8s.getCurrentRotations(context, name)
             name = `${name}---${current.rotation}`
           }

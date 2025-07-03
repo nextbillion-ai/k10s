@@ -27,7 +27,7 @@ export const Uninstall = {
           throw new Error('manifestOutputPath must be defined when using --gen-only')
         }
         context.genOnly = true
-        context.info(`Runing in --gen-only mode, removing manifest file ${context.manifestOutputPath}`)      
+        context.info(`Runing in --gen-only mode, removing manifest file ${context.manifestOutputPath}`)
       }
       await context.run(async (context) => {
         try {
