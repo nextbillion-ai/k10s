@@ -21,6 +21,18 @@ async function jsonLoad (path) {
   return JSON.parse(await readFile(path))
 }
 
+async function mkdirp (path) {
+  return await new Promise((resolve, reject) => {
+    fs.mkdir(path, { recursive: true }, (err) => {
+      if (err) {
+        reject(err)
+      }
+      resolve()
+    })
+  })
+}
+
+
 async function plainWrite (path, values) {
   await new Promise((resolve, reject) => {
     fs.writeFile(path, values, 'utf8', (err) => {
@@ -86,6 +98,11 @@ async function pathExists (path, options) {
   }
 }
 
+async function rm (path) {
+  shelljs.rm(path)
+}
+
+
 export {
   yamlLoad,
   yamlLoads,
@@ -99,5 +116,7 @@ export {
   jsonWrite,
   plainWrite,
   pathExists,
-  readFile
+  readFile,
+  mkdirp,
+  rm
 }

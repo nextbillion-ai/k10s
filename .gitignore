@@ -2,3 +2,4 @@ defs
 node_modules
 coverage
 .operator
+*.DS_Store

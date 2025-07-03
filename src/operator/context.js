@@ -1,6 +1,7 @@
 import { Resource } from './resource.js'
 import { Asset } from './asset.js'
 import { shell } from '../index.js'
+import { join } from 'path'
 
 const _contexts = {}
 
@@ -34,6 +35,7 @@ export class Context {
     this.logging = options.logging
     this.dry = options.dry
     this.clusterConfPath = options.clusterConfPath
+    this.manifestOutputPath = options.manifestOutputPath
 
     const [namespace, name] = resource.split('/')
     if (!namespace || !name) {
@@ -52,7 +54,27 @@ export class Context {
     return `${this.basePath}/assets/global/${this.cluster}.yaml`
   }
 
-  async ensureNamespace (updateNamespace) {
+  getManifestOutputPathNamespace () {
+    if (!this.manifestOutputPath) {
+      return null
+    }
+    return join(this.manifestOutputPath, this.cluster, this.namespace)
+  }
+
+  getManifestOutputPathApp () {
+    if (!this.manifestOutputPath) {
+      return null
+    }
+    return join(this.getManifestOutputPathNamespace(), `${this.name}.yaml`)
+  }
+
+  async ensureNamespace (argv) {
+    if (this.genOnly) {
+      this.info(`Runing in --gen-only mode, skipping namespace creation`)
+      // no need to care about namespace, just return because we are just generating manifest
+      return
+    }
+
     const r = await shell.run(`kubectl get ns/${this.namespace}`, { silent: true, nothrow: true })
     if (r.code !== 0) {
       this.info(`creating namespace: ${this.namespace}`)
@@ -61,7 +83,7 @@ export class Context {
       return
     }
 
-    if (updateNamespace) {
+    if (argv.updateNamespace) {
       this.info(`updating namespace: ${this.namespace}`)
       await shell.run(`bash -c "set -e;gsg cp ${this.basePath}/assets/namespace/releases/${this.namespaceVersion}/chart.tgz ./${this.namespace}.tgz;gsg cp ${this.getClusterConfPath()} ./${this.cluster}.yaml; 
       helm upgrade ${this.namespace} ./${this.namespace}.tgz -f ./${this.cluster}.yaml --set global.namespace=${this.namespace} --wait --timeout 20s;rm ${this.namespace}.tgz;rm ./${this.cluster}.yaml"`)

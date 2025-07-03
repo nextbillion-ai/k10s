@@ -18,17 +18,40 @@ export const Rollout = {
       type: 'string',
       alias: 'c'
     })
-      .option('update-namespace', {
-        alias: 'n',
-        type: 'boolean',
-        describe: 'Update the namespace if needed',
-        default: false // or true, depending on your needs
-      })
+    .option('update-namespace', {
+      alias: 'n',
+      type: 'boolean',
+      describe: 'Update the namespace if needed',
+      default: false // or true, depending on your needs
+    })
+    .option('gen-only', {
+      alias: 'g',
+      type: 'boolean',
+      describe: 'Generate manifest only',
+      default: false
+    })
+    .option('prune-rotation', {
+      alias: 'p',
+      type: 'boolean',
+      describe: 'Prune old rotation info from the manifest',
+      default: false
+    })
   },
   handler: async (argv) => {
     await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
       const context = new Context(argv.resource, await Config(argv.config))
+
+      if (argv.genOnly) {
+        // generate manifest only, will not do any kubectl apply
+        if (!context.manifestOutputPath) {
+          throw new Error('manifestOutputPath must be defined when using --gen-only')
+        }
+        context.genOnly = true
+        context.pruneRotation = argv.pruneRotation
+        context.info(`Runing in --gen-only mode, writing manifest to ${context.manifestOutputPath}`)      
+      }
+
       await context.run(async (context) => {
         try {
           let templatedValue
@@ -65,7 +88,7 @@ export const Rollout = {
           }
           await context.resource().schemaCheck(context, templatedValue)
           await context.resource().update(context, templatedValue)
-          await context.ensureNamespace(argv.updateNamespace)
+          await context.ensureNamespace(argv)
           context.wait = argv.wait
           await Operation.rollout(context)
         } catch (e) {

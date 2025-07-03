@@ -137,6 +137,10 @@ export const K8s = {
   },
 
   async rolloutResource (context, item) {
+    if (context.genOnly) {
+      // skip as we don't need to rollout in genOnly mode
+      return
+    }
     await K8s._withTempFile(context, { type: 'yaml', value: item }, async (tempFile) => {
       await shell.run(`kubectl apply -f ${tempFile}`)
       if (!context.wait) {
@@ -156,6 +160,10 @@ export const K8s = {
   },
 
   async deleteResource (context, name, kind) {
+    if (context.genOnly) {
+      // skip as we don't need to delete in genOnly mode
+      return
+    }
     const wait = context.wait ? '' : '--wait=false'
     switch (kind) {
       case 'StatefulSet':
@@ -174,13 +182,32 @@ export const K8s = {
   },
 
   async getCurrentRotations (context, name) {
-    const names = (await shell.run(`kubectl get sts -n ${context.namespace} | grep -v NAME | grep -v 'No resources found' | grep "^${name}---"| awk '{print $1}'`,
-      { silent: true, nothrow: true }))
-      .stdout
-      .trim()
-      .split('\n')
-      .filter(x => x.length > 0)
-      .sort()
+    let names
+    let items = []
+    if (context.genOnly) {
+      // get the names from the raw manifest
+      const rawManifest = await K8s.getRawManifestOutput(context, { nothrow: true })
+      // sort the raw manifest by name to make sure the rotation is in the correct order
+      //   so that the last item is the current rotation
+      items = rawManifest
+      .filter(item => item.kind === 'StatefulSet' && item.metadata.name.startsWith(`${name}---`))
+      .sort((a, b) => a.metadata.name.localeCompare(b.metadata.name))
+      names = items.map( item => item.metadata.name)      
+    } else {
+      // get the names from the k8s
+      names = (await shell.run(`kubectl get sts -n ${context.namespace} | grep -v NAME | grep -v 'No resources found' | grep "^${name}---"| awk '{print $1}'`,
+        { silent: true, nothrow: true }))
+        .stdout
+        .trim()
+        .split('\n')
+        .filter(x => x.length > 0)
+        .sort()      
+      
+      // creating a shell object for each item for completeness of api contract
+        items = names.map(name => ({ kind: 'StatefulSet', metadata: { name, namespace: context.namespace } }))
+    }
+
+
     let rotation = 0
     let exists = false
     if (names.length > 0) {
@@ -193,21 +220,101 @@ export const K8s = {
     return {
       names,
       rotation,
-      exists
+      exists,
+      items
     }
   },
 
-  async writeRelease (context, manifest) {
-    const name = `${context.name}-manifest`
-    await K8s.writeConfigMap(context, name, { manifest: await fs.yamlDumpsAll(manifest) })
+  async writeRelease (context, release, newRawManifes=[], toRemoves=[]) {
+    if (context.genOnly) {
+      const manifestPath = context.getManifestOutputPathNamespace()
+      const manifestFile = context.getManifestOutputPathApp()
+      if (manifestPath) {
+        await fs.mkdirp(manifestPath)
+      }
+
+      // using newRawManifes insteaad of release because rawManifest carries rotation info
+      // we are also adding the toRemoves to the manifest, so that old items are not deleted to guarantee availabiliy
+      // but if pruneRotation is true, we will not include those items into the manifest
+      await fs.yamlWriteAll(manifestFile, context.pruneRotation ? newRawManifes : newRawManifes.concat(toRemoves) )
+    } else {
+      const name = `${context.name}-manifest`
+      await K8s.writeConfigMap(context, name, { manifest: await fs.yamlDumpsAll(release) })
+    }
   },
 
-  async getRelease (context) {
-    const name = `${context.name}-manifest`
-    return await fs.yamlLoadsAll((await K8s.readConfigMap(context, name)).manifest)
+  removeRotationInfo (manifest) {
+    // Group StatefulSets by base name and keep only latest version
+    const groups = {}
+    for (const x of manifest) {
+      if (x.kind === 'StatefulSet') {
+        const match = x.metadata.name.match(/^(.+)---(\d+)$/)
+        if (match) {
+          const [_, baseName, version] = match
+          if (!groups[baseName] || Number(version) > Number(groups[baseName].version)) {
+            const item = JSON.parse(JSON.stringify(x)) // Deep clone
+            item.metadata.name = baseName // Remove rotation info from name
+            groups[baseName] = {
+              item,
+              version: Number(version)
+            }
+          }
+          continue
+        }
+      }
+      groups[x.metadata.name] = {
+        item: x,
+        version: -1 // Non-StatefulSet items or StatefulSets without version
+      }
+    }
+
+    return Object.values(groups).map(g => g.item)
+  },
+
+  async getRawManifestOutput  (context, options={}) {
+    const localPath = context.getManifestOutputPathApp()
+    try {
+      let oldManifest = await fs.yamlLoadsAll(await fs.readFile(localPath, 'utf8'))
+      return oldManifest
+    } catch (e) {
+      if (options.nothrow) {
+        context.error(`failed to read old manifest from ${localPath}: ${e.message || e}`)
+        return []
+      }
+      throw e
+    }
+  },
+
+  async getRelease (context, options={}) {
+    if (context.genOnly) {
+      const oldManifest = await K8s.getRawManifestOutput(context, options)
+      // need to remove rotation info from the raw manifest
+      return K8s.removeRotationInfo(oldManifest)
+    }
+
+    let oldManifest
+    try {
+      const name = `${context.name}-manifest`
+      oldManifest = await fs.yamlLoadsAll((await K8s.readConfigMap(context, name)).manifest)
+    } catch (e) {
+      if (options.nothrow) {
+        context.error(`failed to get release for ${context.namespace}/${context.name}`)
+        oldManifest = []
+      } else {
+        throw e
+      }
+    }
+    return oldManifest    
   },
 
   async deleteRelease (context) {
+    if (context.genOnly) {
+      const manifestFile = context.getManifestOutputPathApp()
+      if (await fs.pathExists(manifestFile, { mode: 'file' })) {
+        await fs.rm(manifestFile)
+      }
+      return
+    }
     const name = `${context.name}-manifest`
     await shell.run(`kubectl delete cm/${name} -n ${context.namespace}`)
   },
