@@ -236,7 +236,7 @@ export const K8s = {
       if (toRemoves.length > 0 && !context.pruneRotation) {
         // we need to add the toRemoves to the manifest, so that old items are not deleted to guarantee availabiliy
         context.info(`you have the following redundant items in the manifest: ${toRemoves.map(x => x.metadata.name).join(', ')}`)
-        context.info(`you can use --prune-rotation to remove them after all of them are running stably in your cluster`)
+        context.info('you can use --prune-rotation to remove them after all of them are running stably in your cluster')
       }
 
       // using newRawManifes insteaad of release because rawManifest carries rotation info

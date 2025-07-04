@@ -285,7 +285,7 @@ export class Default {
           toDeletes.push(name)
       }
       for (const toDelete of toDeletes) {
-        try {          
+        try {
           await this.lib.K8s.deleteResource(context, toDelete, item.kind)
         } catch (e) {
           context.error(`failed to delete ${item.kind}/${toDelete} from ${context.namespace}`)
