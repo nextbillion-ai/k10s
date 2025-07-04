@@ -38,14 +38,8 @@ export class Default {
     context.setTimeout()
     const newManifest = await this.lib.K8s.getManifestFromChart(context, chart, values)
     const release = JSON.parse(JSON.stringify(newManifest))
-    let oldManifest
-    try {
-      oldManifest = await this.lib.K8s.getRelease(context)
-    } catch (e) {
-      context.error(`failed to get release for ${context.namespace}/${context.name}`)
-      oldManifest = []
-    }
-    if (context.dry) {
+    const oldManifest = await this.lib.K8s.getRelease(context, { nothrow: true })
+    if (context.dry && !context.genOnly) {
       return await this.lib.K8s.dry(context, oldManifest, newManifest)
     }
     const changes = {}
@@ -67,7 +61,7 @@ export class Default {
         context.error(`failed to delete ${toRemove.kind}/${toRemove.name}: ${e.message || e}`)
       }
     }
-    await this.lib.K8s.writeRelease(context, release)
+    await this.lib.K8s.writeRelease(context, release, newManifest, toRemoves.map(x => x.item))
   }
 
   /**
@@ -84,9 +78,15 @@ export class Default {
         return x.kind === o.kind && x.metadata.name === o.metadata.name
       })
       if (filtered.length === 0) {
-        // the old items needs to be deleted
+        if (context.genOnly) {
+          // skip as we don't need to delete in genOnly mode
+          // we will just override the raw manifest file with the new manifest
+          continue
+        }
+        // this old item needs to be deleted
         let name = o.metadata.name
         if (o.kind === 'StatefulSet') {
+          // check if we should add rotation in order to properly delete the old item
           const shouldRename = await this.shouldRename(o)
           if (shouldRename) {
             const current = await this.lib.K8s.getCurrentRotations(context, name)
@@ -96,9 +96,12 @@ export class Default {
         toRemoves.push({ kind: o.kind, name })
         continue
       }
+
+      // an old item exists
       const df = await this.lib.K8s.diff(o, filtered[0])
       const changed = Object.keys(df).length > 0
       if (o.kind === 'StatefulSet') {
+        // it is a statefulset, we need to check if it is changed and whether rotation is needed
         const shouldRotateFlag = changed && await this.shouldRotate(context, df, o)
         const stsName = filtered[0].metadata.name
         context.info(`trying to rotate manifest for ${context.namespace}/${stsName}`)
@@ -128,9 +131,11 @@ export class Default {
             }
           }
         }
-        const removes = (removeAll ? current.names : current.names.slice(0, -1))
+
+        // we still put the old items in the 'toRemoves' list because we want to keep them temporarily in the genOnly mode
+        const removes = (removeAll ? current.items : current.items.slice(0, -1))
         for (const remove of removes) {
-          toRemoves.push({ kind: o.kind, name: remove })
+          toRemoves.push({ kind: o.kind, name: remove.metadata.name, item: remove })
         }
         changes[`${o.kind}-${filtered[0].metadata.name}`] = changed
         context.info(`applying rotation: ${filtered[0].metadata.name}`)
@@ -251,6 +256,11 @@ export class Default {
  * @param {Context} context
  */
   async uninstall (context) {
+    if (context.genOnly) {
+      // only need to delete the release in genOnly mode
+      await this.lib.K8s.deleteRelease(context)
+      return
+    }
     if (context.dry) {
       context.info('uninstall dry run')
       return

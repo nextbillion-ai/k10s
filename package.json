@@ -1,6 +1,6 @@
 {
   "name": "@nbai/k10s",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "main": "src/index.js",
   "author": "chang@nextbillion.ai",
   "license": "MIT",

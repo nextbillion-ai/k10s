@@ -24,11 +24,19 @@ export const Rollout = {
         describe: 'Update the namespace if needed',
         default: false // or true, depending on your needs
       })
+      .option('prune-rotation', {
+        alias: 'p',
+        type: 'boolean',
+        describe: 'Prune old rotation info from the manifest',
+        default: false
+      })
   },
   handler: async (argv) => {
     await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
       const context = new Context(argv.resource, await Config(argv.config))
+      context.pruneRotation = argv.pruneRotation
+
       await context.run(async (context) => {
         try {
           let templatedValue
@@ -65,7 +73,7 @@ export const Rollout = {
           }
           await context.resource().schemaCheck(context, templatedValue)
           await context.resource().update(context, templatedValue)
-          await context.ensureNamespace(argv.updateNamespace)
+          await context.ensureNamespace(argv)
           context.wait = argv.wait
           await Operation.rollout(context)
         } catch (e) {
