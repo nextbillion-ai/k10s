@@ -55,7 +55,6 @@ export class Default {
     await this.applyManifest(context, newManifest, changes)
     for (const toRemove of toRemoves) {
       try {
-        context.info(`deleting ${toRemove.kind}/${toRemove.name}`)
         await this.lib.K8s.deleteResource(context, toRemove.name, toRemove.kind)
       } catch (e) {
         context.error(`failed to delete ${toRemove.kind}/${toRemove.name}: ${e.message || e}`)
@@ -286,8 +285,7 @@ export class Default {
           toDeletes.push(name)
       }
       for (const toDelete of toDeletes) {
-        try {
-          context.info(`deleting ${item.kind}/${toDelete} from ${context.namespace}`)
+        try {          
           await this.lib.K8s.deleteResource(context, toDelete, item.kind)
         } catch (e) {
           context.error(`failed to delete ${item.kind}/${toDelete} from ${context.namespace}`)
