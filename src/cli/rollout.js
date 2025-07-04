@@ -24,12 +24,6 @@ export const Rollout = {
         describe: 'Update the namespace if needed',
         default: false // or true, depending on your needs
       })
-      .option('gen-only', {
-        alias: 'g',
-        type: 'boolean',
-        describe: 'Generate manifest only',
-        default: false
-      })
       .option('prune-rotation', {
         alias: 'p',
         type: 'boolean',
@@ -41,16 +35,7 @@ export const Rollout = {
     await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
       const context = new Context(argv.resource, await Config(argv.config))
-
-      if (argv.genOnly) {
-        // generate manifest only, will not do any kubectl apply
-        if (!context.manifestOutputPath) {
-          throw new Error('manifestOutputPath must be defined when using --gen-only')
-        }
-        context.genOnly = true
-        context.pruneRotation = argv.pruneRotation
-        context.info(`Runing in --gen-only mode, writing manifest to ${context.manifestOutputPath}`)
-      }
+      context.pruneRotation = argv.pruneRotation
 
       await context.run(async (context) => {
         try {

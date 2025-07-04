@@ -11,24 +11,11 @@ export const Uninstall = {
       type: 'string',
       alias: 'c'
     })
-    yargs.option('gen-only', {
-      type: 'boolean',
-      alias: 'g',
-      describe: 'Generate manifest only',
-      default: false
-    })
   },
   handler: async (argv) => {
     await shell.wrap(async () => {
       shell.mustExist(['gsg', 'kubectl', 'helm'])
       const context = new Context(argv.resource, await Config(argv.config))
-      if (argv.genOnly) {
-        if (!context.manifestOutputPath) {
-          throw new Error('manifestOutputPath must be defined when using --gen-only')
-        }
-        context.genOnly = true
-        context.info(`Runing in --gen-only mode, removing manifest file ${context.manifestOutputPath}`)
-      }
       await context.run(async (context) => {
         try {
           context.wait = argv.wait

@@ -36,6 +36,13 @@ export class Context {
     this.dry = options.dry
     this.clusterConfPath = options.clusterConfPath
     this.manifestOutputPath = options.manifestOutputPath
+    this.genOnly = options.genOnly
+    if (this.genOnly) {
+      if (!this.manifestOutputPath) {
+        throw new Error('manifestOutputPath must be defined when using --gen-only')
+      }
+      this.info(`Runing in --gen-only mode, writing manifest to ${this.manifestOutputPath}`)
+    }
 
     const [namespace, name] = resource.split('/')
     if (!namespace || !name) {
