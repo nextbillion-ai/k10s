@@ -249,6 +249,28 @@ export class Default {
         // change the real target StatefulSet name.
         changes[key] = true
       }
+      // `foreman/apply-policy: create-only` resources are applied only when they
+      // do not already exist. Used by the cron-managed HPA's baseline object so an
+      // HPA is present right after deploy, while its live min/max stays owned by
+      // the CronJobs (re-applying would clobber whatever the crons last set).
+      if (!context.genOnly &&
+          item.metadata.annotations &&
+          item.metadata.annotations['foreman/apply-policy'] === 'create-only') {
+        if (await this.lib.K8s.resourceExists(context, item.kind, item.metadata.name)) {
+          // exists: don't re-apply (keep cron-owned fields like min/max). But for
+          // an HPA, still sync scaleTargetRef — it was rewritten above to the
+          // rotated StatefulSet name, so the HPA follows a rotation immediately
+          // instead of pointing at the deleted target until the next cron run.
+          if (item.kind === 'HorizontalPodAutoscaler' && item.spec && item.spec.scaleTargetRef) {
+            await this.lib.K8s.mergePatch(context, item.kind, item.metadata.name, { spec: { scaleTargetRef: item.spec.scaleTargetRef } })
+          }
+          context.info(`applyManifest skipped create-only item that already exists: ${key}`)
+          continue
+        }
+        // absent: force creation even if the manifest is otherwise unchanged, so
+        // the resource is reliably recreated (e.g. after a manual delete)
+        changes[key] = true
+      }
       if (changes[key] === false) {
         context.info(`applyManifest skipped for item: ${key}`)
         continue

@@ -377,6 +377,129 @@ describe('Plugin', () => {
           assert.ok(out.includes('metadata:\n  name: sts1\n'), 'hpa metadata.name should stay sts1')
           assert.equal((out.match(/sts1---0/g) || []).length, 1)
         }
+      },
+      {
+        name: 'create-only: skips full apply when it exists, but syncs scaleTargetRef on rotation',
+        run: async () => {
+          const applied = []
+          const patched = []
+          const lib = {
+            K8s: {
+              diff () { return {} },
+              writeRelease () {},
+              rolloutResource (ctx, item) { applied.push(item.metadata.name) },
+              getCurrentRotations () { return { rotation: 0, exists: false, names: [], items: [] } },
+              resourceExists () { return true },
+              mergePatch (ctx, kind, name, patch) { patched.push({ kind, name, patch }) }
+            }
+          }
+          const ctx = {
+            info () {}
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: {
+                name: 'sts1'
+              },
+              spec: {
+                template: {
+                  metadata: { labels: {} },
+                  spec: { containers: [{ image: 'haha:1' }] }
+                }
+              }
+            },
+            {
+              kind: 'HorizontalPodAutoscaler',
+              metadata: {
+                name: 'hpa1',
+                labels: {},
+                annotations: { 'foreman/apply-policy': 'create-only' }
+              },
+              spec: {
+                scaleTargetRef: { kind: 'StatefulSet', name: 'sts1' }
+              }
+            }
+          ]
+          await p.applyManifest(ctx, oldManifest, {})
+          // create-only HPA is not re-applied (cron owns min/max) ...
+          assert.ok(!applied.includes('hpa1'), 'create-only HPA should not be re-applied')
+          // ... but its scaleTargetRef is patched to the rotated StatefulSet name
+          assert.equal(patched.length, 1)
+          assert.equal(patched[0].kind, 'HorizontalPodAutoscaler')
+          assert.equal(patched[0].patch.spec.scaleTargetRef.name, 'sts1---0')
+        }
+      },
+      {
+        name: 'create-only: applies when the resource does not exist',
+        run: async () => {
+          const applied = []
+          const lib = {
+            K8s: {
+              diff () { return {} },
+              writeRelease () {},
+              rolloutResource (ctx, item) { applied.push(item.metadata.name) },
+              getCurrentRotations () { return { rotation: 0, exists: false, names: [], items: [] } },
+              resourceExists () { return false }
+            }
+          }
+          const ctx = {
+            info () {}
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'HorizontalPodAutoscaler',
+              metadata: {
+                name: 'hpa1',
+                labels: {},
+                annotations: { 'foreman/apply-policy': 'create-only' }
+              },
+              spec: {
+                scaleTargetRef: { kind: 'StatefulSet', name: 'sts1' }
+              }
+            }
+          ]
+          await p.applyManifest(ctx, oldManifest, {})
+          assert.deepEqual(applied, ['hpa1'])
+        }
+      },
+      {
+        name: 'create-only: recreates when absent even if manifest is unchanged',
+        run: async () => {
+          const applied = []
+          const lib = {
+            K8s: {
+              diff () { return {} },
+              writeRelease () {},
+              rolloutResource (ctx, item) { applied.push(item.metadata.name) },
+              getCurrentRotations () { return { rotation: 0, exists: false, names: [], items: [] } },
+              resourceExists () { return false }
+            }
+          }
+          const ctx = {
+            info () {}
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'HorizontalPodAutoscaler',
+              metadata: {
+                name: 'hpa1',
+                labels: {},
+                annotations: { 'foreman/apply-policy': 'create-only' }
+              },
+              spec: {
+                scaleTargetRef: { kind: 'StatefulSet', name: 'sts1' }
+              }
+            }
+          ]
+          // changes marks the item unchanged; an absent create-only resource must
+          // still be (re)created rather than skipped as unchanged
+          await p.applyManifest(ctx, oldManifest, { 'HorizontalPodAutoscaler-hpa1': false })
+          assert.deepEqual(applied, ['hpa1'])
+        }
       }
     ]
   })
