@@ -182,6 +182,36 @@ export const K8s = {
     }
   },
 
+  async resourceExists (context, kind, name) {
+    const result = await shell.run(
+      `kubectl get ${kind}/${name} -n ${context.namespace} -o name`,
+      { nothrow: true }
+    )
+    if (result.code === 0) {
+      return true
+    }
+    // Only a genuine NotFound means "absent". Any other failure (RBAC, a
+    // transient apiserver error, a bad namespace) must NOT be read as absence —
+    // otherwise a create-only resource would be re-applied and clobber the
+    // fields this policy is meant to preserve. Surface those instead.
+    const stderr = (result.stderr || '').toLowerCase()
+    if (stderr.includes('notfound') || stderr.includes('not found')) {
+      return false
+    }
+    throw new Error(`failed to check existence of ${kind}/${name} in ${context.namespace}: ${result.stderr || result.stdout || `exit ${result.code}`}`)
+  },
+
+  async mergePatch (context, kind, name, patch) {
+    if (context.genOnly) {
+      return
+    }
+    // No nothrow: a failed target patch must surface, otherwise the rollout could
+    // continue and delete the old StatefulSet while the HPA still points at it.
+    await shell.run(
+      `kubectl patch ${kind}/${name} -n ${context.namespace} --type=merge -p '${JSON.stringify(patch)}'`
+    )
+  },
+
   async getCurrentRotations (context, name) {
     let names
     let items = []
