@@ -242,12 +242,71 @@ export class Default {
           item.spec.scaleTargetRef.name = stsNameToRealName[targetStsName]
         }
       }
+      if (item.kind === 'CronJob' && this.rewriteCronHpaScaleTarget(item, stsNameToRealName)) {
+        // a cron-managed HPA embeds the StatefulSet name inside its container
+        // command (a `kubectl apply` HPA manifest), so the scaleTargetRef rewrite
+        // above does not reach it. Always re-apply (like HPA) since a rotation can
+        // change the real target StatefulSet name.
+        changes[key] = true
+      }
       if (changes[key] === false) {
         context.info(`applyManifest skipped for item: ${key}`)
         continue
       }
       await this.lib.K8s.rolloutResource(context, item)
     }
+  }
+
+  /**
+   * Rewrite the StatefulSet name referenced by a cron-managed HPA.
+   *
+   * Cron-managed HPAs are CronJobs whose container command runs
+   * `kubectl apply` against an inline HorizontalPodAutoscaler manifest. The
+   * StatefulSet name in that manifest's `scaleTargetRef.name` is plain text
+   * inside the command string, so it is not covered by the scaleTargetRef
+   * rewrite applied to real HPA objects. This replaces the embedded
+   * StatefulSet name with its rotated real name (e.g. `nbval-foo` ->
+   * `nbval-foo---0`) using the same mapping.
+   *
+   * @param {*} item a CronJob manifest item
+   * @param {Object<string,string>} stsNameToRealName plain -> rotated name map
+   * @returns {boolean} true if the CronJob embeds an HPA scaleTargetRef to a StatefulSet
+   */
+  rewriteCronHpaScaleTarget (item, stsNameToRealName) {
+    const containers = item?.spec?.jobTemplate?.spec?.template?.spec?.containers || []
+    let found = false
+    const rewrite = (part) => {
+      if (typeof part !== 'string' || !part.includes('scaleTargetRef')) return part
+      // Match a `scaleTargetRef:` mapping and its indented child lines (lines
+      // indented deeper than the `scaleTargetRef:` key). Field order inside the
+      // block is irrelevant: we only rewrite the block's `name:` when the block
+      // also targets a StatefulSet. The name may be unquoted or wrapped in
+      // matching single/double quotes; the quote is preserved on output.
+      return part.replace(
+        /^([ \t]*)scaleTargetRef:[ \t]*\n((?:\1[ \t]+.*(?:\n|$))*)/gm,
+        (block) => {
+          if (!/(^|\n)[ \t]*kind:[ \t]*StatefulSet\b/.test(block)) return block
+          return block.replace(
+            /((?:^|\n)[ \t]*name:[ \t]*)(["']?)([^\s"']+)\2/,
+            (m, prefix, quote, name) => {
+              const real = stsNameToRealName[name]
+              if (!real) return m
+              found = true
+              return `${prefix}${quote}${real}${quote}`
+            }
+          )
+        }
+      )
+    }
+    for (const c of containers) {
+      // the script may live in either `command` or `args` (the common
+      // `command: ['/bin/sh','-c']` + script-in-`args` form)
+      for (const field of ['command', 'args']) {
+        if (!Array.isArray(c[field])) continue
+        c[field] = c[field].map(rewrite)
+      }
+    }
+    return found
   }
 
   /**
