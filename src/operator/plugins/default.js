@@ -101,11 +101,12 @@ export class Default {
       const changed = Object.keys(df).length > 0
       if (o.kind === 'StatefulSet') {
         // it is a statefulset, we need to check if it is changed and whether rotation is needed
-        const shouldRotateFlag = changed && await this.shouldRotate(context, df, o)
         const stsName = filtered[0].metadata.name
         context.info(`trying to rotate manifest for ${context.namespace}/${stsName}`)
         const current = await this.lib.K8s.getCurrentRotations(context, stsName)
         context.info(`current rotation for ${context.namespace}/${stsName} is ${current.rotation}`)
+        const live = await this.resolveLiveReplicas(context, o, stsName, current)
+        const shouldRotateFlag = changed && await this.shouldRotate(context, df, o, live.replicas, filtered[0])
         let removeAll = false
         let newStsName
         const realNameLabel = 'app.kubernetes.io/realname'
@@ -121,6 +122,7 @@ export class Default {
         filtered[0].metadata.name = newStsName
         filtered[0].metadata.labels[realNameLabel] = newStsName
         filtered[0].spec.template.metadata.labels[realNameLabel] = newStsName
+        this.preserveLiveReplicas(filtered[0], df, live)
         if (filtered[0].spec.template.spec.topologySpreadConstraints) {
           for (const tpc of filtered[0].spec.template.spec.topologySpreadConstraints) {
             if (tpc.labelSelector && tpc.labelSelector.matchLabels) {
@@ -176,7 +178,7 @@ export class Default {
  * @param {*} diff
  * @returns
  */
-  async shouldRotate (context, diff, sts) {
+  async shouldRotate (context, diff, sts, liveReplicas, newSts) {
     if (!diff || !diff.spec) return false
 
     if (!(await this.shouldRename(sts))) {
@@ -185,10 +187,13 @@ export class Default {
 
     const specChanges = Object.keys(diff.spec)
 
-    if (sts.spec.replicas === 1) {
+    if (this.effectiveReplicas(sts, liveReplicas) === 1) {
       if (specChanges.length === 1 && specChanges[0] === 'replicas') {
         return false
       }
+      return true
+    }
+    if (this.mustRotateForOnDelete(diff, sts, newSts)) {
       return true
     }
     for (const key of specChanges) {
@@ -200,6 +205,54 @@ export class Default {
       return true
     }
     return false
+  }
+
+  // Effective replica count for the rotation decision: prefer the live
+  // (HPA-managed) count over the chart seed, since a StatefulSet actually running
+  // >1 pod can be updated in place and should not take the single-replica
+  // always-rotate path. Falls back to the manifest value when no live count given.
+  effectiveReplicas (sts, liveReplicas) {
+    return (liveReplicas === undefined || liveReplicas === null) ? sts.spec.replicas : liveReplicas
+  }
+
+  // OnDelete StatefulSets do not roll their pods on an in-place template update, so
+  // a template/image change would not take effect without rotation; force rotation
+  // in that case. Other in-place-able changes (replicas, updateStrategy) still apply
+  // in place. Judged on the DESIRED (new) strategy — that governs how the applied
+  // pods roll (e.g. switching OnDelete->RollingUpdate makes an in-place roll work).
+  mustRotateForOnDelete (diff, sts, newSts) {
+    const strategySts = newSts || sts
+    const onDelete = strategySts.spec.updateStrategy && strategySts.spec.updateStrategy.type === 'OnDelete'
+    return Boolean(onDelete && diff.spec.template)
+  }
+
+  // Resolve the live replica count of a StatefulSet's current rotation. The chart
+  // seeds spec.replicas (often 1) but an HPA may have scaled the live object higher
+  // (or to zero) — read that as the source of truth. Falls back to the PREVIOUS
+  // replica count (not the new desired one) when no live read is available, so an
+  // intended 1->N scale-up keeps the safe single-replica path. Returns
+  // { replicas, known }, where `known` means an actual live value was read.
+  async resolveLiveReplicas (context, oldSts, stsName, current) {
+    if (current.exists) {
+      const r = await this.lib.K8s.getLiveReplicas(context, `${stsName}---${current.rotation}`)
+      // accept 0: a scaled-to-zero workload is a valid live count to preserve
+      if (r !== null && r >= 0) {
+        return { replicas: r, known: true }
+      }
+    }
+    return { replicas: oldSts.spec.replicas, known: false }
+  }
+
+  // Preserve the live (HPA-managed) replica count on the applied manifest — in
+  // either direction, since the HPA owns it — so the new rotation comes up at real
+  // capacity and an in-place apply never resets it to the chart seed. Skipped when
+  // the chart explicitly changed replicas (it shows up in the diff), so a deliberate
+  // scale is honored, and only when an actual live value was read.
+  preserveLiveReplicas (sts, diff, live) {
+    const replicasChangedInChart = diff.spec && ('replicas' in diff.spec)
+    if (live.known && !replicasChangedInChart) {
+      sts.spec.replicas = live.replicas
+    }
   }
 
   getChangedPaths (diff, path) {
