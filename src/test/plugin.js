@@ -646,7 +646,8 @@ describe('Plugin', () => {
           const lib = {
             K8s: {
               diff () { return { spec: { replicas: true } } },
-              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: true, names: [], items: [] } }
+              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: true, names: [], items: [] } },
+              getLiveReplicas () { return null }
             }
           }
           const ctx = {
@@ -681,6 +682,213 @@ describe('Plugin', () => {
 
           await p.rotateManifest(ctx, oldManifest, newManifest, {})
           assert.equal(newManifest[0].metadata.name, 'name2---0')
+        }
+      },
+      {
+        name: 'HPA-scaled single-seed STS updates in place instead of rotating',
+        run: async () => {
+          const ctx = { info () {}, rotated: false }
+          const lib = {
+            K8s: {
+              // a template (image) change — the kind that CAN be applied in place
+              diff () { return { spec: { template: { metadata: {} } } } },
+              getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
+              // chart seeds replicas: 1, but the HPA has scaled the live STS to 6
+              getLiveReplicas () { return 6 }
+            }
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: { name: 'name1', labels: {} },
+              spec: {
+                replicas: 1,
+                template: {
+                  metadata: { labels: {} },
+                  spec: { containers: [{ image: 'haha:1' }] }
+                }
+              }
+            }
+          ]
+          const newManifest = JSON.parse(JSON.stringify(oldManifest))
+
+          await p.rotateManifest(ctx, oldManifest, newManifest, {})
+          // no rotation: stays on the current rotation (in-place update)
+          assert.equal(newManifest[0].metadata.name, 'name1---3')
+          assert.equal(ctx.rotated, false)
+          // the live HPA-managed replica count is preserved (not scaled to the seed)
+          assert.equal(newManifest[0].spec.replicas, 6)
+        }
+      },
+      {
+        name: 'OnDelete StatefulSet rotates even when HPA-scaled above one replica',
+        run: async () => {
+          const ctx = { info () {}, rotated: false }
+          const lib = {
+            K8s: {
+              diff () { return { spec: { template: { metadata: {} } } } },
+              getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
+              getLiveReplicas () { return 6 }
+            }
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: { name: 'name1', labels: {} },
+              spec: {
+                replicas: 1,
+                updateStrategy: { type: 'OnDelete' },
+                template: {
+                  metadata: { labels: {} },
+                  spec: { containers: [{ image: 'haha:1' }] }
+                }
+              }
+            }
+          ]
+          const newManifest = JSON.parse(JSON.stringify(oldManifest))
+
+          await p.rotateManifest(ctx, oldManifest, newManifest, {})
+          // OnDelete won't roll pods in place, so it must still rotate
+          assert.equal(newManifest[0].metadata.name, 'name1---4')
+          assert.equal(ctx.rotated, true)
+        }
+      },
+      {
+        name: 'OnDelete STS with only an updateStrategy change applies in place',
+        run: async () => {
+          const ctx = { info () {}, rotated: false }
+          const lib = {
+            K8s: {
+              // no template change — only the updateStrategy itself changed
+              diff () { return { spec: { updateStrategy: { type: true } } } },
+              getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
+              getLiveReplicas () { return 6 }
+            }
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: { name: 'name1', labels: {} },
+              spec: {
+                replicas: 1,
+                updateStrategy: { type: 'OnDelete' },
+                template: {
+                  metadata: { labels: {} },
+                  spec: { containers: [{ image: 'haha:1' }] }
+                }
+              }
+            }
+          ]
+          const newManifest = JSON.parse(JSON.stringify(oldManifest))
+
+          await p.rotateManifest(ctx, oldManifest, newManifest, {})
+          // updateStrategy-only change is in-place-able, so no rotation is forced
+          assert.equal(newManifest[0].metadata.name, 'name1---3')
+          assert.equal(ctx.rotated, false)
+        }
+      },
+      {
+        name: 'explicit chart replica scale-down is honored, not overwritten by live count',
+        run: async () => {
+          const ctx = { info () {}, rotated: false }
+          const lib = {
+            K8s: {
+              // the chart changed replicas (6 -> 3)
+              diff () { return { spec: { replicas: 3 } } },
+              getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
+              getLiveReplicas () { return 6 }
+            }
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: { name: 'name1', labels: {} },
+              spec: {
+                replicas: 6,
+                template: {
+                  metadata: { labels: {} },
+                  spec: { containers: [{ image: 'haha:1' }] }
+                }
+              }
+            }
+          ]
+          const newManifest = JSON.parse(JSON.stringify(oldManifest))
+          newManifest[0].spec.replicas = 3
+
+          await p.rotateManifest(ctx, oldManifest, newManifest, {})
+          // the requested scale-down is applied, not reset to the live count
+          assert.equal(newManifest[0].spec.replicas, 3)
+        }
+      },
+      {
+        name: 'live replica count is preserved even when below the chart seed',
+        run: async () => {
+          const ctx = { info () {}, rotated: false }
+          const lib = {
+            K8s: {
+              diff () { return { spec: { template: { metadata: {} } } } },
+              getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
+              // chart seed is 6, but the HPA has scaled the live STS down to 2
+              getLiveReplicas () { return 2 }
+            }
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: { name: 'name1', labels: {} },
+              spec: {
+                replicas: 6,
+                template: {
+                  metadata: { labels: {} },
+                  spec: { containers: [{ image: 'haha:1' }] }
+                }
+              }
+            }
+          ]
+          const newManifest = JSON.parse(JSON.stringify(oldManifest))
+
+          await p.rotateManifest(ctx, oldManifest, newManifest, {})
+          // HPA owns the count: preserve the live value (2), don't reset to seed (6)
+          assert.equal(newManifest[0].spec.replicas, 2)
+        }
+      },
+      {
+        name: 'live replica count of zero (scale-to-zero) is preserved',
+        run: async () => {
+          const ctx = { info () {}, rotated: false }
+          const lib = {
+            K8s: {
+              diff () { return { spec: { template: { metadata: {} } } } },
+              getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
+              // the live workload is scaled to zero (off-hours)
+              getLiveReplicas () { return 0 }
+            }
+          }
+          const p = new Default(lib)
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: { name: 'name1', labels: {} },
+              spec: {
+                replicas: 1,
+                template: {
+                  metadata: { labels: {} },
+                  spec: { containers: [{ image: 'haha:1' }] }
+                }
+              }
+            }
+          ]
+          const newManifest = JSON.parse(JSON.stringify(oldManifest))
+
+          await p.rotateManifest(ctx, oldManifest, newManifest, {})
+          // 0 is a valid live count: don't fall back to the seed and create pods
+          assert.equal(newManifest[0].spec.replicas, 0)
+          assert.equal(ctx.rotated, false)
         }
       }
     ]

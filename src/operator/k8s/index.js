@@ -86,8 +86,13 @@ export const K8s = {
     }
   },
 
-  async waitForPodsOfSts (context, item, num) {
-    const target = Math.min(item.spec.replicas, num)
+  async waitForPodsOfSts (context, item) {
+    // Wait for the full desired replica count. An HPA may have scaled the live
+    // StatefulSet well above the chart's seed value, and rotateManifest sets
+    // item.spec.replicas to that live count. This only runs during a rotation, so
+    // the new rotation must reach full capacity before the old one is deleted —
+    // otherwise we'd drop from e.g. 6 serving pods down to 1.
+    const target = item.spec.replicas
     let controllerRevisionHash = null
     context.info('getting controllerRevisionHash')
     while (true) {
@@ -148,7 +153,7 @@ export const K8s = {
       }
       switch (item.kind) {
         case 'StatefulSet':
-          await K8s.waitForPodsOfSts(context, item, 2)
+          await K8s.waitForPodsOfSts(context, item)
           break
         case 'Deployment':
           await K8s.waitForPodsOfDeploy(context, item, 2)
@@ -210,6 +215,23 @@ export const K8s = {
     await shell.run(
       `kubectl patch ${kind}/${name} -n ${context.namespace} --type=merge -p '${JSON.stringify(patch)}'`
     )
+  },
+
+  // Live desired replica count of a StatefulSet (the value an HPA maintains on
+  // spec.replicas), or null if it does not exist / cannot be read.
+  async getLiveReplicas (context, name) {
+    if (context.genOnly) {
+      return null
+    }
+    const result = await shell.run(
+      `kubectl get sts/${name} -n ${context.namespace} -o=jsonpath='{.spec.replicas}'`,
+      { nothrow: true, silent: true }
+    )
+    if (result.code !== 0) {
+      return null
+    }
+    const n = Number.parseInt((result.stdout || '').trim(), 10)
+    return Number.isNaN(n) ? null : n
   },
 
   async getCurrentRotations (context, name) {
