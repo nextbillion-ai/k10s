@@ -1054,6 +1054,21 @@ describe('Plugin', () => {
           rotated: false
         },
         {
+          // the apply would drop both, which the API server will not put back
+          name: 'rotates when the chart drops a data source the live claim carries',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', dataSource: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, dataSourceRef: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the chart supplies one, the API server copies it into the other
+          name: 'does not rotate on the data source the API server copied',
+          wantedSpec: { dataSource: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', dataSource: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, dataSourceRef: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
           name: 'rotates when the live volume attributes class differs',
           wantedSpec: { volumeAttributesClassName: 'new' },
           live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeAttributesClassName: 'old', resources: { requests: { storage: '180Gi' } } } }],

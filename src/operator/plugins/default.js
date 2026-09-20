@@ -289,12 +289,23 @@ export class Default {
     if (this.stableStringify(wanted.selector) !== this.stableStringify(live.selector)) {
       return true
     }
-    for (const key of ['dataSource', 'dataSourceRef']) {
-      if (wanted[key] === undefined) {
-        continue
-      }
-      if (this.stableStringify(wanted[key]) !== this.stableStringify(live[key])) {
+    const sources = ['dataSource', 'dataSourceRef']
+    if (sources.every(key => wanted[key] === undefined)) {
+      // The API server fills a source in only when the apply supplies one, so a live
+      // source with neither wanted came from the unrecorded rollout and this apply
+      // would drop it.
+      if (sources.some(key => live[key] !== undefined)) {
         return true
+      }
+    } else {
+      // With one supplied, its counterpart is the API server's copy, not drift.
+      for (const key of sources) {
+        if (wanted[key] === undefined) {
+          continue
+        }
+        if (this.stableStringify(wanted[key]) !== this.stableStringify(live[key])) {
+          return true
+        }
       }
     }
     return false
