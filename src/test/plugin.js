@@ -986,6 +986,44 @@ describe('Plugin', () => {
           live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', selector: { matchLabels: { zone: 'a', disk: 'ssd' } }, resources: { requests: { storage: '180Gi' } } } }],
           rotation: 'name1---9',
           rotated: false
+        },
+        {
+          // a quantity may be written without its integer part
+          name: 'does not rotate on a quantity written without a leading digit',
+          wantedSpec: { resources: { requests: { storage: '.5Gi' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '512Mi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          // one byte apart at Ei scale: a double cannot tell these two apart
+          name: 'rotates on a difference a double would round away',
+          wantedSpec: { resources: { requests: { storage: '1Ei' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '1152921504606846975' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'rotates when a chart-set template label differs',
+          wantedMeta: { labels: { tier: 'new' } },
+          live: [{ metadata: { name: 'data', labels: { tier: 'old' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the cluster adds its own annotations, and those are not drift
+          name: 'does not rotate on annotations the chart never set',
+          wantedMeta: { annotations: { owner: 'maps' } },
+          live: [{ metadata: { name: 'data', annotations: { owner: 'maps', 'pv.kubernetes.io/bind-completed': 'yes' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the live volume attributes class differs',
+          wantedSpec: { volumeAttributesClassName: 'new' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeAttributesClassName: 'old', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
         }
       ].map(tt => ({
         name: tt.name,
@@ -1007,6 +1045,7 @@ describe('Plugin', () => {
             claim.spec.storageClassName = 'dynamic-rwo'
           }
           Object.assign(claim.spec, tt.wantedSpec || {})
+          Object.assign(claim.metadata, tt.wantedMeta || {})
           const oldManifest = [
             {
               kind: 'StatefulSet',

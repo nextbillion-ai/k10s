@@ -223,15 +223,33 @@ export class Default {
     if (live === null) {
       return false
     }
-    const byName = (claims) => Object.fromEntries((claims || []).map(c => [c.metadata && c.metadata.name, c.spec || {}]))
+    const byName = (claims) => Object.fromEntries((claims || []).map(c => [c.metadata && c.metadata.name, c]))
     const liveClaims = byName(live)
     const wantedClaims = byName(newSts.spec.volumeClaimTemplates)
     if (Object.keys(liveClaims).sort().join() !== Object.keys(wantedClaims).sort().join()) {
       return true
     }
-    for (const [name, spec] of Object.entries(wantedClaims)) {
-      if (this.claimSpecDiffers(spec, liveClaims[name])) {
+    for (const [name, claim] of Object.entries(wantedClaims)) {
+      const liveClaim = liveClaims[name] || {}
+      if (this.claimMetadataDiffers(claim.metadata || {}, liveClaim.metadata || {})) {
         return true
+      }
+      if (this.claimSpecDiffers(claim.spec || {}, liveClaim.spec || {})) {
+        return true
+      }
+    }
+    return false
+  }
+
+  // Labels and annotations on the template are part of the same immutable field.
+  // Only the keys the chart sets are compared: the cluster adds its own and those
+  // are not drift.
+  claimMetadataDiffers (wanted, live) {
+    for (const field of ['labels', 'annotations']) {
+      for (const [key, value] of Object.entries(wanted[field] || {})) {
+        if ((live[field] || {})[key] !== value) {
+          return true
+        }
       }
     }
     return false
@@ -253,7 +271,7 @@ export class Default {
       return true
     }
     const apiDefaults = { volumeMode: 'Filesystem' }
-    for (const key of ['storageClassName', 'volumeMode', 'volumeName']) {
+    for (const key of ['storageClassName', 'volumeMode', 'volumeName', 'volumeAttributesClassName']) {
       if (wanted[key] === undefined) {
         continue
       }
@@ -275,42 +293,46 @@ export class Default {
 
   // The API server canonicalizes quantities, so a chart asking for 1.5Gi reads back
   // as 1536Mi. Comparing the strings would call that drift and rotate, and rotation
-  // deletes the old PVCs.
+  // deletes the old PVCs. Compared exactly: a quantity can exceed what a double
+  // holds, and being off by one byte at Ei scale still means the apply is refused.
   quantitiesDiffer (wanted, live) {
     const a = this.parseQuantity(wanted)
     const b = this.parseQuantity(live)
     if (a === null || b === null) {
       return `${wanted}` !== `${live}`
     }
-    return a !== b
+    return a.num * b.den !== b.num * a.den
   }
 
+  // Parses the Kubernetes quantity grammar into an exact fraction. Accepts a
+  // missing integer part (.5Gi), a missing fraction (5.Gi), scientific notation
+  // and both suffix families.
   parseQuantity (value) {
     if (value === undefined || value === null) {
       return null
     }
-    const matched = /^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(Ki|Mi|Gi|Ti|Pi|Ei|n|u|m|k|M|G|T|P|E)?$/.exec(`${value}`.trim())
+    const matched = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?(Ki|Mi|Gi|Ti|Pi|Ei|n|u|m|k|M|G|T|P|E)?$/.exec(`${value}`.trim())
     if (!matched) {
       return null
     }
-    const scales = {
-      Ki: 1024,
-      Mi: 1024 ** 2,
-      Gi: 1024 ** 3,
-      Ti: 1024 ** 4,
-      Pi: 1024 ** 5,
-      Ei: 1024 ** 6,
-      n: 1e-9,
-      u: 1e-6,
-      m: 1e-3,
-      k: 1e3,
-      M: 1e6,
-      G: 1e9,
-      T: 1e12,
-      P: 1e15,
-      E: 1e18
+    const [, sign, whole, fraction = '', exponent, suffix] = matched
+    if (!whole && !fraction) {
+      return null
     }
-    return Number(matched[1]) * (matched[2] ? scales[matched[2]] : 1)
+    const decimalExponents = { n: -9, u: -6, m: -3, k: 3, M: 6, G: 9, T: 12, P: 15, E: 18 }
+    const binaryExponents = { Ki: 10, Mi: 20, Gi: 30, Ti: 40, Pi: 50, Ei: 60 }
+    let num = BigInt((whole || '0') + fraction)
+    let den = 10n ** BigInt(fraction.length)
+    const scale = (exponent ? Number(exponent) : 0) + (suffix && suffix in decimalExponents ? decimalExponents[suffix] : 0)
+    if (scale > 0) {
+      num *= 10n ** BigInt(scale)
+    } else if (scale < 0) {
+      den *= 10n ** BigInt(-scale)
+    }
+    if (suffix && suffix in binaryExponents) {
+      num *= 2n ** BigInt(binaryExponents[suffix])
+    }
+    return { num: sign === '-' ? -num : num, den }
   }
 
   stableStringify (value) {
