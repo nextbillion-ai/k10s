@@ -934,6 +934,58 @@ describe('Plugin', () => {
           live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'nb-ssd', resources: { requests: { storage: '180Gi' } } } }],
           rotation: 'name1---10',
           rotated: true
+        },
+        {
+          // the API server canonicalizes quantities: 1.5Gi reads back as 1536Mi
+          name: 'does not rotate on a quantity the API server rewrote',
+          wantedSpec: { resources: { requests: { storage: '1.5Gi' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '1536Mi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the chart asks for no class and the live claim has one',
+          wantedSpec: { storageClassName: '' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'standard-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'does not rotate when both sides ask for no class',
+          wantedSpec: { storageClassName: '' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: '', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the live volume mode differs from the chart',
+          wantedSpec: { volumeMode: 'Block' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeMode: 'Filesystem', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // Filesystem is what the API server fills in, so an unset live value matches
+          name: 'does not rotate when the chart spells out the default volume mode',
+          wantedSpec: { volumeMode: 'Filesystem' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the live selector differs',
+          wantedSpec: { selector: { matchLabels: { disk: 'ssd' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', selector: { matchLabels: { disk: 'hdd' } }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the same selector, written with its keys in another order
+          name: 'does not rotate on selector key order',
+          wantedSpec: { selector: { matchLabels: { disk: 'ssd', zone: 'a' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', selector: { matchLabels: { zone: 'a', disk: 'ssd' } }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
         }
       ].map(tt => ({
         name: tt.name,
@@ -954,6 +1006,7 @@ describe('Plugin', () => {
           if (tt.wantedClass !== null) {
             claim.spec.storageClassName = 'dynamic-rwo'
           }
+          Object.assign(claim.spec, tt.wantedSpec || {})
           const oldManifest = [
             {
               kind: 'StatefulSet',

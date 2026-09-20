@@ -229,20 +229,98 @@ export class Default {
     if (Object.keys(liveClaims).sort().join() !== Object.keys(wantedClaims).sort().join()) {
       return true
     }
-    const storage = (s) => s.resources && s.resources.requests && s.resources.requests.storage
     for (const [name, spec] of Object.entries(wantedClaims)) {
-      const liveSpec = liveClaims[name]
-      if (`${storage(spec)}` !== `${storage(liveSpec)}`) {
-        return true
-      }
-      if (spec.storageClassName && spec.storageClassName !== liveSpec.storageClassName) {
-        return true
-      }
-      if (spec.accessModes && [...spec.accessModes].sort().join() !== [...(liveSpec.accessModes || [])].sort().join()) {
+      if (this.claimSpecDiffers(spec, liveClaims[name])) {
         return true
       }
     }
     return false
+  }
+
+  // Compared on what the chart actually sets: an omitted field is left to the
+  // cluster, an explicitly empty one (storageClassName: '') is a real value, and a
+  // field the API server defaults (volumeMode) counts as equal to that default.
+  claimSpecDiffers (wanted, live) {
+    const resource = (s, kind) => (s.resources && s.resources[kind]) || {}
+    for (const kind of ['requests', 'limits']) {
+      for (const [key, value] of Object.entries(resource(wanted, kind))) {
+        if (this.quantitiesDiffer(value, resource(live, kind)[key])) {
+          return true
+        }
+      }
+    }
+    if (wanted.accessModes && [...wanted.accessModes].sort().join() !== [...(live.accessModes || [])].sort().join()) {
+      return true
+    }
+    const apiDefaults = { volumeMode: 'Filesystem' }
+    for (const key of ['storageClassName', 'volumeMode', 'volumeName']) {
+      if (wanted[key] === undefined) {
+        continue
+      }
+      const liveValue = live[key] === undefined ? apiDefaults[key] : live[key]
+      if (wanted[key] !== liveValue) {
+        return true
+      }
+    }
+    for (const key of ['selector', 'dataSource', 'dataSourceRef']) {
+      if (wanted[key] === undefined) {
+        continue
+      }
+      if (this.stableStringify(wanted[key]) !== this.stableStringify(live[key])) {
+        return true
+      }
+    }
+    return false
+  }
+
+  // The API server canonicalizes quantities, so a chart asking for 1.5Gi reads back
+  // as 1536Mi. Comparing the strings would call that drift and rotate, and rotation
+  // deletes the old PVCs.
+  quantitiesDiffer (wanted, live) {
+    const a = this.parseQuantity(wanted)
+    const b = this.parseQuantity(live)
+    if (a === null || b === null) {
+      return `${wanted}` !== `${live}`
+    }
+    return a !== b
+  }
+
+  parseQuantity (value) {
+    if (value === undefined || value === null) {
+      return null
+    }
+    const matched = /^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(Ki|Mi|Gi|Ti|Pi|Ei|n|u|m|k|M|G|T|P|E)?$/.exec(`${value}`.trim())
+    if (!matched) {
+      return null
+    }
+    const scales = {
+      Ki: 1024,
+      Mi: 1024 ** 2,
+      Gi: 1024 ** 3,
+      Ti: 1024 ** 4,
+      Pi: 1024 ** 5,
+      Ei: 1024 ** 6,
+      n: 1e-9,
+      u: 1e-6,
+      m: 1e-3,
+      k: 1e3,
+      M: 1e6,
+      G: 1e9,
+      T: 1e12,
+      P: 1e15,
+      E: 1e18
+    }
+    return Number(matched[1]) * (matched[2] ? scales[matched[2]] : 1)
+  }
+
+  stableStringify (value) {
+    if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value === undefined ? null : value)
+    }
+    if (Array.isArray(value)) {
+      return `[${value.map(v => this.stableStringify(v)).join(',')}]`
+    }
+    return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${this.stableStringify(value[k])}`).join(',')}}`
   }
 
   // Effective replica count for the rotation decision: prefer the live
