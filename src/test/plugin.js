@@ -930,6 +930,14 @@ describe('Plugin', () => {
           rotated: false
         },
         {
+          // sub-milli precision is rounded up on write: 0.1m is stored as 1m
+          name: 'does not rotate on a quantity rounded up to milli',
+          wantedSpec: { resources: { requests: { storage: '0.1m' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '1m' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
           name: 'rotates when the live storage class differs',
           live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'nb-ssd', resources: { requests: { storage: '180Gi' } } } }],
           rotation: 'name1---10',
@@ -1011,10 +1019,37 @@ describe('Plugin', () => {
           rotated: true
         },
         {
-          // the cluster adds its own annotations, and those are not drift
-          name: 'does not rotate on annotations the chart never set',
+          name: 'does not rotate when the template annotations match',
           wantedMeta: { annotations: { owner: 'maps' } },
-          live: [{ metadata: { name: 'data', annotations: { owner: 'maps', 'pv.kubernetes.io/bind-completed': 'yes' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          live: [{ metadata: { name: 'data', annotations: { owner: 'maps' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          // the apply would drop it, which is an update to the immutable template
+          name: 'rotates when the chart drops a label the live template carries',
+          live: [{ metadata: { name: 'data', labels: { tier: 'old' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // an omitted mode means Filesystem, so a live Block is drift
+          name: 'rotates when the chart omits the mode and the live claim is Block',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeMode: 'Block', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'rotates when the chart drops the volume attributes class',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeAttributesClassName: 'old', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the chart leaves the class to the cluster, so the class it was given is not drift
+          name: 'still does not compare a class the chart leaves out',
+          wantedClass: null,
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'standard-rwo', volumeMode: 'Filesystem', resources: { requests: { storage: '180Gi' } } } }],
           rotation: 'name1---9',
           rotated: false
         },

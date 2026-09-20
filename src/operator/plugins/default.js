@@ -241,13 +241,15 @@ export class Default {
     return false
   }
 
-  // Labels and annotations on the template are part of the same immutable field.
-  // Only the keys the chart sets are compared: the cluster adds its own and those
-  // are not drift.
+  // Labels and annotations on the template are part of the same immutable field,
+  // and a key only the live side carries would be removed by the apply, so both
+  // directions count. Nothing but a rollout writes template metadata.
   claimMetadataDiffers (wanted, live) {
     for (const field of ['labels', 'annotations']) {
-      for (const [key, value] of Object.entries(wanted[field] || {})) {
-        if ((live[field] || {})[key] !== value) {
+      const wantedField = wanted[field] || {}
+      const liveField = live[field] || {}
+      for (const key of new Set([...Object.keys(wantedField), ...Object.keys(liveField)])) {
+        if (wantedField[key] !== liveField[key]) {
           return true
         }
       }
@@ -255,32 +257,39 @@ export class Default {
     return false
   }
 
-  // Compared on what the chart actually sets: an omitted field is left to the
-  // cluster, an explicitly empty one (storageClassName: '') is a real value, and a
-  // field the API server defaults (volumeMode) counts as equal to that default.
+  // Compared in both directions, because dropping a field the live claim carries is
+  // as much an update to the immutable template as changing it. The two exceptions
+  // are fields whose value the cluster, not the chart, decides: storageClassName
+  // (an omitted class becomes whatever the cluster defaults to) and the
+  // dataSource/dataSourceRef pair (the API server fills each one in from the other).
   claimSpecDiffers (wanted, live) {
     const resource = (s, kind) => (s.resources && s.resources[kind]) || {}
     for (const kind of ['requests', 'limits']) {
-      for (const [key, value] of Object.entries(resource(wanted, kind))) {
-        if (this.quantitiesDiffer(value, resource(live, kind)[key])) {
+      for (const key of new Set([...Object.keys(resource(wanted, kind)), ...Object.keys(resource(live, kind))])) {
+        if (this.quantitiesDiffer(resource(wanted, kind)[key], resource(live, kind)[key])) {
           return true
         }
       }
     }
-    if (wanted.accessModes && [...wanted.accessModes].sort().join() !== [...(live.accessModes || [])].sort().join()) {
+    if ([...(wanted.accessModes || [])].sort().join() !== [...(live.accessModes || [])].sort().join()) {
       return true
     }
-    const apiDefaults = { volumeMode: 'Filesystem' }
-    for (const key of ['storageClassName', 'volumeMode', 'volumeName', 'volumeAttributesClassName']) {
-      if (wanted[key] === undefined) {
-        continue
-      }
-      const liveValue = live[key] === undefined ? apiDefaults[key] : live[key]
-      if (wanted[key] !== liveValue) {
+    // Filesystem is what the API server fills in for an omitted mode on either side
+    if ((wanted.volumeMode || 'Filesystem') !== (live.volumeMode || 'Filesystem')) {
+      return true
+    }
+    for (const key of ['volumeName', 'volumeAttributesClassName']) {
+      if (wanted[key] !== live[key]) {
         return true
       }
     }
-    for (const key of ['selector', 'dataSource', 'dataSourceRef']) {
+    if (wanted.storageClassName !== undefined && wanted.storageClassName !== live.storageClassName) {
+      return true
+    }
+    if (this.stableStringify(wanted.selector) !== this.stableStringify(live.selector)) {
+      return true
+    }
+    for (const key of ['dataSource', 'dataSourceRef']) {
       if (wanted[key] === undefined) {
         continue
       }
@@ -293,20 +302,21 @@ export class Default {
 
   // The API server canonicalizes quantities, so a chart asking for 1.5Gi reads back
   // as 1536Mi. Comparing the strings would call that drift and rotate, and rotation
-  // deletes the old PVCs. Compared exactly: a quantity can exceed what a double
-  // holds, and being off by one byte at Ei scale still means the apply is refused.
+  // deletes the old PVCs.
   quantitiesDiffer (wanted, live) {
     const a = this.parseQuantity(wanted)
     const b = this.parseQuantity(live)
     if (a === null || b === null) {
       return `${wanted}` !== `${live}`
     }
-    return a.num * b.den !== b.num * a.den
+    return a !== b
   }
 
-  // Parses the Kubernetes quantity grammar into an exact fraction. Accepts a
-  // missing integer part (.5Gi), a missing fraction (5.Gi), scientific notation
-  // and both suffix families.
+  // Parses the Kubernetes quantity grammar and returns the value in milli-units as
+  // a BigInt: a quantity is never stored with more precision than milli and is
+  // rounded up to it (0.1m is stored as 1m), and at Ei scale a double cannot tell
+  // two values a byte apart from each other. Accepts a missing integer part
+  // (.5Gi), a missing fraction (5.Gi), scientific notation and both suffixes.
   parseQuantity (value) {
     if (value === undefined || value === null) {
       return null
@@ -332,7 +342,9 @@ export class Default {
     if (suffix && suffix in binaryExponents) {
       num *= 2n ** BigInt(binaryExponents[suffix])
     }
-    return { num: sign === '-' ? -num : num, den }
+    const milli = num * 1000n
+    const rounded = milli % den === 0n ? milli / den : milli / den + 1n
+    return sign === '-' ? -rounded : rounded
   }
 
   stableStringify (value) {
