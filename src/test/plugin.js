@@ -647,7 +647,8 @@ describe('Plugin', () => {
             K8s: {
               diff () { return { spec: { replicas: true } } },
               getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: true, names: [], items: [] } },
-              getLiveReplicas () { return null }
+              getLiveReplicas () { return null },
+              getLiveVolumeClaimTemplates () { return null }
             }
           }
           const ctx = {
@@ -694,7 +695,8 @@ describe('Plugin', () => {
               diff () { return { spec: { template: { metadata: {} } } } },
               getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
               // chart seeds replicas: 1, but the HPA has scaled the live STS to 6
-              getLiveReplicas () { return 6 }
+              getLiveReplicas () { return 6 },
+              getLiveVolumeClaimTemplates () { return null }
             }
           }
           const p = new Default(lib)
@@ -729,7 +731,8 @@ describe('Plugin', () => {
             K8s: {
               diff () { return { spec: { template: { metadata: {} } } } },
               getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
-              getLiveReplicas () { return 6 }
+              getLiveReplicas () { return 6 },
+              getLiveVolumeClaimTemplates () { return null }
             }
           }
           const p = new Default(lib)
@@ -764,7 +767,8 @@ describe('Plugin', () => {
               // no template change — only the updateStrategy itself changed
               diff () { return { spec: { updateStrategy: { type: true } } } },
               getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
-              getLiveReplicas () { return 6 }
+              getLiveReplicas () { return 6 },
+              getLiveVolumeClaimTemplates () { return null }
             }
           }
           const p = new Default(lib)
@@ -799,7 +803,8 @@ describe('Plugin', () => {
               // the chart changed replicas (6 -> 3)
               diff () { return { spec: { replicas: 3 } } },
               getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
-              getLiveReplicas () { return 6 }
+              getLiveReplicas () { return 6 },
+              getLiveVolumeClaimTemplates () { return null }
             }
           }
           const p = new Default(lib)
@@ -833,7 +838,8 @@ describe('Plugin', () => {
               diff () { return { spec: { template: { metadata: {} } } } },
               getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
               // chart seed is 6, but the HPA has scaled the live STS down to 2
-              getLiveReplicas () { return 2 }
+              getLiveReplicas () { return 2 },
+              getLiveVolumeClaimTemplates () { return null }
             }
           }
           const p = new Default(lib)
@@ -866,7 +872,8 @@ describe('Plugin', () => {
               diff () { return { spec: { template: { metadata: {} } } } },
               getCurrentRotations () { return { rotation: 3, exists: true, names: ['name1---3'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---3' } }] } },
               // the live workload is scaled to zero (off-hours)
-              getLiveReplicas () { return 0 }
+              getLiveReplicas () { return 0 },
+              getLiveVolumeClaimTemplates () { return null }
             }
           }
           const p = new Default(lib)
@@ -891,6 +898,225 @@ describe('Plugin', () => {
           assert.equal(ctx.rotated, false)
         }
       }
+    ]
+  })
+  TestCommon.testModule({
+    name: 'rotateManifest volumeClaimTemplates',
+    cases: [
+      ...[
+        {
+          name: 'rotates when the live claim differs from the release record',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '273Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'updates in place when the live claim matches',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'updates in place when the live claims cannot be read',
+          live: null,
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'does not compare a class the chart leaves to the cluster default',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'standard-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          wantedClass: null,
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          // sub-milli precision is rounded up on write: 0.1m is stored as 1m
+          name: 'does not rotate on a quantity rounded up to milli',
+          wantedSpec: { resources: { requests: { storage: '0.1m' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '1m' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the live storage class differs',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'nb-ssd', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the API server canonicalizes quantities: 1.5Gi reads back as 1536Mi
+          name: 'does not rotate on a quantity the API server rewrote',
+          wantedSpec: { resources: { requests: { storage: '1.5Gi' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '1536Mi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the chart asks for no class and the live claim has one',
+          wantedSpec: { storageClassName: '' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'standard-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'does not rotate when both sides ask for no class',
+          wantedSpec: { storageClassName: '' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: '', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the live volume mode differs from the chart',
+          wantedSpec: { volumeMode: 'Block' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeMode: 'Filesystem', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // Filesystem is what the API server fills in, so an unset live value matches
+          name: 'does not rotate when the chart spells out the default volume mode',
+          wantedSpec: { volumeMode: 'Filesystem' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the live selector differs',
+          wantedSpec: { selector: { matchLabels: { disk: 'ssd' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', selector: { matchLabels: { disk: 'hdd' } }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the same selector, written with its keys in another order
+          name: 'does not rotate on selector key order',
+          wantedSpec: { selector: { matchLabels: { disk: 'ssd', zone: 'a' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', selector: { matchLabels: { zone: 'a', disk: 'ssd' } }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          // a quantity may be written without its integer part
+          name: 'does not rotate on a quantity written without a leading digit',
+          wantedSpec: { resources: { requests: { storage: '.5Gi' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '512Mi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          // one byte apart at Ei scale: a double cannot tell these two apart
+          name: 'rotates on a difference a double would round away',
+          wantedSpec: { resources: { requests: { storage: '1Ei' } } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '1152921504606846975' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'rotates when a chart-set template label differs',
+          wantedMeta: { labels: { tier: 'new' } },
+          live: [{ metadata: { name: 'data', labels: { tier: 'old' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'does not rotate when the template annotations match',
+          wantedMeta: { annotations: { owner: 'maps' } },
+          live: [{ metadata: { name: 'data', annotations: { owner: 'maps' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          // the apply would drop it, which is an update to the immutable template
+          name: 'rotates when the chart drops a label the live template carries',
+          live: [{ metadata: { name: 'data', labels: { tier: 'old' } }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // an omitted mode means Filesystem, so a live Block is drift
+          name: 'rotates when the chart omits the mode and the live claim is Block',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeMode: 'Block', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          name: 'rotates when the chart drops the volume attributes class',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeAttributesClassName: 'old', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the chart leaves the class to the cluster, so the class it was given is not drift
+          name: 'still does not compare a class the chart leaves out',
+          wantedClass: null,
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'standard-rwo', volumeMode: 'Filesystem', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          // the apply would drop both, which the API server will not put back
+          name: 'rotates when the chart drops a data source the live claim carries',
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', dataSource: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, dataSourceRef: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        },
+        {
+          // the chart supplies one, the API server copies it into the other
+          name: 'does not rotate on the data source the API server copied',
+          wantedSpec: { dataSource: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' } },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', dataSource: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, dataSourceRef: { apiGroup: 'snapshot.storage.k8s.io', kind: 'VolumeSnapshot', name: 'snap' }, resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---9',
+          rotated: false
+        },
+        {
+          name: 'rotates when the live volume attributes class differs',
+          wantedSpec: { volumeAttributesClassName: 'new' },
+          live: [{ metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], storageClassName: 'dynamic-rwo', volumeAttributesClassName: 'old', resources: { requests: { storage: '180Gi' } } } }],
+          rotation: 'name1---10',
+          rotated: true
+        }
+      ].map(tt => ({
+        name: tt.name,
+        run: async () => {
+          const ctx = { info () {}, rotated: false, namespace: 'ns' }
+          const asked = []
+          const lib = {
+            K8s: {
+              // the release record and the new manifest differ in the template only
+              diff () { return { spec: { template: { metadata: {} } } } },
+              getCurrentRotations () { return { rotation: 9, exists: true, names: ['name1---9'], items: [{ kind: 'StatefulSet', metadata: { name: 'name1---9' } }] } },
+              getLiveReplicas () { return 2 },
+              getLiveVolumeClaimTemplates (ctx, name) { asked.push(name); return tt.live }
+            }
+          }
+          const p = new Default(lib)
+          const claim = { metadata: { name: 'data' }, spec: { accessModes: ['ReadWriteOnce'], resources: { requests: { storage: '180Gi' } } } }
+          if (tt.wantedClass !== null) {
+            claim.spec.storageClassName = 'dynamic-rwo'
+          }
+          Object.assign(claim.spec, tt.wantedSpec || {})
+          Object.assign(claim.metadata, tt.wantedMeta || {})
+          const oldManifest = [
+            {
+              kind: 'StatefulSet',
+              metadata: { name: 'name1', labels: {} },
+              spec: {
+                replicas: 2,
+                template: { metadata: { labels: {} }, spec: { containers: [{ image: 'haha:1' }] } },
+                volumeClaimTemplates: [claim]
+              }
+            }
+          ]
+          const newManifest = JSON.parse(JSON.stringify(oldManifest))
+
+          const toRemoves = await p.rotateManifest(ctx, oldManifest, newManifest, {})
+          assert.deepEqual(asked, ['name1---9'])
+          assert.equal(newManifest[0].metadata.name, tt.rotation)
+          assert.equal(Boolean(ctx.rotated), tt.rotated)
+          // after a rotation the replaced StatefulSet is removed
+          assert.deepEqual(toRemoves.map(r => r.name), tt.rotated ? ['name1---9'] : [])
+        }
+      }))
     ]
   })
 })

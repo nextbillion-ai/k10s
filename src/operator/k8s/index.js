@@ -234,6 +234,26 @@ export const K8s = {
     return Number.isNaN(n) ? null : n
   },
 
+  // volumeClaimTemplates of a live StatefulSet, or null if it does not exist /
+  // cannot be read.
+  async getLiveVolumeClaimTemplates (context, name) {
+    if (context.genOnly) {
+      return null
+    }
+    const result = await shell.run(
+      `kubectl get sts/${name} -n ${context.namespace} -o=jsonpath='{.spec.volumeClaimTemplates}'`,
+      { nothrow: true, silent: true }
+    )
+    if (result.code !== 0) {
+      return null
+    }
+    try {
+      return JSON.parse((result.stdout || '').trim() || '[]')
+    } catch (e) {
+      return null
+    }
+  },
+
   async getCurrentRotations (context, name) {
     let names
     let items = []

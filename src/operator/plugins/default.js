@@ -1,5 +1,6 @@
 import { Common } from '../common.js'
 import { Context } from '../context.js'
+import { claimsDiffer } from './claims.js'
 const blackLists = [/^(docker.io\/)*redis/, /^(docker.io\/)*postgres/]
 export class Default {
   constructor (lib) {
@@ -106,7 +107,14 @@ export class Default {
         const current = await this.lib.K8s.getCurrentRotations(context, stsName)
         context.info(`current rotation for ${context.namespace}/${stsName} is ${current.rotation}`)
         const live = await this.resolveLiveReplicas(context, o, stsName, current)
-        const shouldRotateFlag = changed && await this.shouldRotate(context, df, o, live.replicas, filtered[0])
+        let shouldRotateFlag = changed && await this.shouldRotate(context, df, o, live.replicas, filtered[0])
+        if (changed && !shouldRotateFlag && current.exists && await this.shouldRename(o)) {
+          const liveName = `${stsName}---${current.rotation}`
+          if (await this.claimsDifferFromLive(context, liveName, filtered[0])) {
+            context.info(`volumeClaimTemplates of ${context.namespace}/${liveName} differ from the release record, rotating`)
+            shouldRotateFlag = true
+          }
+        }
         let removeAll = false
         let newStsName
         const realNameLabel = 'app.kubernetes.io/realname'
@@ -205,6 +213,18 @@ export class Default {
       return true
     }
     return false
+  }
+
+  // The release record can disagree with the live StatefulSet (it was replaced by
+  // another rollout whose record was not written), and volumeClaimTemplates cannot
+  // be updated in place: the API server refuses the apply. See claims.js for what
+  // is compared.
+  async claimsDifferFromLive (context, liveName, newSts) {
+    const live = await this.lib.K8s.getLiveVolumeClaimTemplates(context, liveName)
+    if (live === null) {
+      return false
+    }
+    return claimsDiffer(live, newSts.spec.volumeClaimTemplates)
   }
 
   // Effective replica count for the rotation decision: prefer the live
