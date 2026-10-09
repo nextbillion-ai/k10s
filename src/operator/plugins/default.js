@@ -4,9 +4,13 @@ import { claimsDiffer } from './claims.js'
 // Images that never rotate: databases keep their data in their volume, and a rotation
 // starts a new StatefulSet on an empty one while the old stays behind the same Service.
 // An image may name Docker Hub's official-image namespace in full
-// (docker.io/library/redis), which OKE's CRI-O requires, so allow library/ as well as
-// the bare and docker.io/ forms.
-const blackLists = [/^(docker\.io\/)*(library\/)?redis/, /^(docker\.io\/)*(library\/)?postgres/]
+// (docker.io/library/redis), which OKE's CRI-O requires. The bare and docker.io/ forms
+// keep their old prefix match; the library/ form must be the image itself (a tag, a
+// digest or the end follows), so it does not also exempt library/redis-something.
+const blackLists = [
+  /^(docker\.io\/)*(redis|library\/redis(?=[:@]|$))/,
+  /^(docker\.io\/)*(postgres|library\/postgres(?=[:@]|$))/
+]
 export class Default {
   constructor (lib) {
     this.lib = lib

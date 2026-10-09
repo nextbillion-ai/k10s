@@ -602,10 +602,17 @@ describe('Plugin', () => {
             assert.equal(newManifest[0].metadata.name, 'app---1', 'an ordinary image still rotates')
             assert.equal(newManifest[1].metadata.name, 'db', `${image} must not rotate`)
           }
-          // a name that merely contains the word is not a database
-          const other = [sts('db', 'asia-docker.pkg.dev/nextbillion/internal/redis-proxy:1')]
-          await p.rotateManifest(ctx, JSON.parse(JSON.stringify(other)), other, {})
-          assert.equal(other[0].metadata.name, 'db---1')
+          // not databases: a name that merely contains the word, or a library/ image that
+          // only starts with it
+          for (const image of ['asia-docker.pkg.dev/nextbillion/internal/redis-proxy:1', 'docker.io/library/redis-proxy:1', 'docker.io/library/postgres-exporter:1']) {
+            const other = [sts('db', image)]
+            await p.rotateManifest(ctx, JSON.parse(JSON.stringify(other)), other, {})
+            assert.equal(other[0].metadata.name, 'db---1', `${image} is not a database and still rotates`)
+          }
+          // the bare form keeps its old prefix match
+          const legacy = [sts('db', 'redis-stack:7')]
+          await p.rotateManifest(ctx, JSON.parse(JSON.stringify(legacy)), legacy, {})
+          assert.equal(legacy[0].metadata.name, 'db', 'unchanged behaviour for the bare form')
         }
       },
       {
