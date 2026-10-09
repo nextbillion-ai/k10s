@@ -571,6 +571,44 @@ describe('Plugin', () => {
         }
       },
       {
+        name: 'databases never rotate, whichever registry form names them',
+        run: async () => {
+          const lib = {
+            K8s: {
+              diff () { return { spec: { wocao: true } } },
+              getCurrentRotations (ctx, stsName) { return { rotation: 0, exists: false, names: [], items: [] } }
+            }
+          }
+          const ctx = { info () {} }
+          const p = new Default(lib)
+          const sts = (name, image) => ({
+            kind: 'StatefulSet',
+            metadata: { name, labels: {} },
+            spec: { template: { metadata: { labels: {} }, spec: { containers: [{ image }] } } }
+          })
+          const dbImages = [
+            'redis:5.0.7-buster',
+            'docker.io/redis:5.0.7-buster',
+            'docker.io/library/redis:5.0.7-buster',
+            'library/redis:5.0.7-buster',
+            'postgres:11.10-alpine',
+            'docker.io/postgres:11.10-alpine',
+            'docker.io/library/postgres:11.10-alpine'
+          ]
+          for (const image of dbImages) {
+            const oldManifest = [sts('app', 'haha:1'), sts('db', image)]
+            const newManifest = JSON.parse(JSON.stringify(oldManifest))
+            await p.rotateManifest(ctx, oldManifest, newManifest, {})
+            assert.equal(newManifest[0].metadata.name, 'app---1', 'an ordinary image still rotates')
+            assert.equal(newManifest[1].metadata.name, 'db', `${image} must not rotate`)
+          }
+          // a name that merely contains the word is not a database
+          const other = [sts('db', 'asia-docker.pkg.dev/nextbillion/internal/redis-proxy:1')]
+          await p.rotateManifest(ctx, JSON.parse(JSON.stringify(other)), other, {})
+          assert.equal(other[0].metadata.name, 'db---1')
+        }
+      },
+      {
         name: 'with annotations',
         run: async () => {
           const lib = {

@@ -1,7 +1,12 @@
 import { Common } from '../common.js'
 import { Context } from '../context.js'
 import { claimsDiffer } from './claims.js'
-const blackLists = [/^(docker.io\/)*redis/, /^(docker.io\/)*postgres/]
+// Images that never rotate: databases keep their data in their volume, and a rotation
+// starts a new StatefulSet on an empty one while the old stays behind the same Service.
+// An image may name Docker Hub's official-image namespace in full
+// (docker.io/library/redis), which OKE's CRI-O requires, so allow library/ as well as
+// the bare and docker.io/ forms.
+const blackLists = [/^(docker\.io\/)*(library\/)?redis/, /^(docker\.io\/)*(library\/)?postgres/]
 export class Default {
   constructor (lib) {
     this.lib = lib
